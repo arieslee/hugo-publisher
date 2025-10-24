@@ -9,5 +9,7 @@
   "author": {
     "name": "aries",
     "email": "i@liming.me"
-  }
+  },
+  "assetdir": "assets",
+  "icon": "assets/icon.png"
 }

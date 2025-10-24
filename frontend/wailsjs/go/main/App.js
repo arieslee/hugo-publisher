@@ -14,12 +14,12 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
-export function InitGitRepo(arg1) {
-  return window['go']['main']['App']['InitGitRepo'](arg1);
-}
-
 export function IsValidGitRepo(arg1) {
   return window['go']['main']['App']['IsValidGitRepo'](arg1);
+}
+
+export function SaveAndCompressImage(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveAndCompressImage'](arg1, arg2, arg3);
 }
 
 export function SavePost(arg1, arg2, arg3, arg4) {

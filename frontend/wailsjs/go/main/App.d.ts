@@ -7,9 +7,9 @@ export function CompressImage(arg1:string,arg2:string):Promise<void>;
 
 export function Greet(arg1:string):Promise<string>;
 
-export function InitGitRepo(arg1:string):Promise<void>;
-
 export function IsValidGitRepo(arg1:string):Promise<boolean>;
+
+export function SaveAndCompressImage(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SavePost(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

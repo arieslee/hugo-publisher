@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"image/jpeg"
 	"os"
@@ -60,6 +61,31 @@ func (a *App) CompressImage(srcPath, dstPath string) error {
 
 	// Encode and save the image with 85% quality
 	return jpeg.Encode(file, src, &jpeg.Options{Quality: 85})
+}
+
+// SaveAndCompressImage saves and compresses an uploaded image from base64 data
+func (a *App) SaveAndCompressImage(base64Data string, originalFilename, dstPath string) error {
+	// Decode the base64 data
+	imageData, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return err
+	}
+
+	// Create a temporary file for the uploaded image
+	tempFile, err := os.CreateTemp("", "upload-*"+filepath.Ext(originalFilename))
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tempFile.Name()) // Clean up temp file
+	defer tempFile.Close()
+
+	// Write the image data to the temporary file
+	if _, err := tempFile.Write(imageData); err != nil {
+		return err
+	}
+
+	// Now compress the image from temp file to destination
+	return a.CompressImage(tempFile.Name(), dstPath)
 }
 
 // SavePost saves a post as a markdown file
@@ -138,24 +164,6 @@ func (a *App) IsValidGitRepo(directory string) (bool, error) {
 		return false, err
 	}
 	return true, nil
-}
-
-// InitGitRepo initializes a git repository in the specified directory
-func (a *App) InitGitRepo(directory string) error {
-	// Check if the directory is already a git repository
-	gitDir := filepath.Join(directory, ".git")
-	if _, err := os.Stat(gitDir); err == nil {
-		return fmt.Errorf("directory is already a git repository: %s", directory)
-	}
-
-	// Initialize git repository
-	cmd := exec.Command("git", "init")
-	cmd.Dir = directory
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to initialize git repository: %w", err)
-	}
-
-	return nil
 }
 
 // CommitToGit commits the saved post to git
