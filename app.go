@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image/jpeg"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -89,47 +88,85 @@ func (a *App) SaveAndCompressImage(base64Data string, originalFilename, dstPath 
 }
 
 // SavePost saves a post as a markdown file
-func (a *App) SavePost(title, content, coverImagePath, directory string) error {
-	// Get current date for the post
+func (a *App) SavePost(title, content, description, author, coverImagePath, directory string, tags []string, weight int) error {
+	// Get current date for directory
 	currentDate := time.Now().Format("2006-01-02")
 
-	// Create a safe filename based on title and date
-	// Replace spaces and special characters
-	safeTitle := strings.ReplaceAll(title, " ", "-")
+	// Create a safe filename based on title only
+	safeTitle := strings.ToLower(title)                 // 全部转换为小写
+	safeTitle = strings.ReplaceAll(safeTitle, " ", "-") // 空格替换为连字符
 	safeTitle = strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' {
+		// 只保留字母、数字、连字符和下划线
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
 			return r
 		}
 		return -1
 	}, safeTitle)
 
-	// Limit title length to avoid overly long filenames
+	// 限制标题长度以避免过长的文件名
 	if len(safeTitle) > 50 {
 		safeTitle = safeTitle[:50]
 	}
 
-	// Remove trailing hyphens
-	safeTitle = strings.Trim(safeTitle, "-")
+	// 移除开头和结尾的连字符
+	safeTitle = strings.Trim(safeTitle, "-_")
 
-	// If title becomes empty, use a default name
+	// 如果标题变为空，使用默认名称
 	if safeTitle == "" {
 		safeTitle = "post"
 	}
 
-	// Create filename based on title and date
-	filename := fmt.Sprintf("%s-%s.md", currentDate, safeTitle)
-	filepath := filepath.Join(directory, filename)
+	// 创建基于日期的目录路径
+	dateDirectory := filepath.Join(directory, currentDate)
 
-	// Create the markdown content with front matter
-	markdownContent := fmt.Sprintf("---\ntitle: \"%s\"\ndate: \"%s\"\n---\n\n%s", title, currentDate, content)
+	// 创建文件名（不带日期前缀）
+	filename := fmt.Sprintf("%s.md", safeTitle)
+	fullPath := filepath.Join(dateDirectory, filename)
 
-	// Create the directory if it doesn't exist
-	if err := os.MkdirAll(directory, 0755); err != nil {
+	// 设置默认值
+	if author == "" {
+		author = "Aries"
+	}
+	if weight <= 0 {
+		weight = 1
+	}
+
+	// Format tags as YAML array
+	tagsFormatted := ""
+	if len(tags) > 0 {
+		tagsFormatted = "tags: ["
+		for i, tag := range tags {
+			if i > 0 {
+				tagsFormatted += ", "
+			}
+			tagsFormatted += fmt.Sprintf("\"%s\"", tag)
+		}
+		tagsFormatted += "]\n"
+	}
+
+	// Format author as YAML array
+	authorFormatted := ""
+	if author != "" {
+		authorFormatted = fmt.Sprintf("author: [\"%s\"]\n", author)
+	}
+
+	// Format cover image if provided
+	coverFormatted := ""
+	if coverImagePath != "" {
+		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: true\n", coverImagePath)
+	}
+
+	// Create the markdown content with enhanced front matter
+	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndate: %s\ndescription: \"%s\"\n%s%s%sweight: %d\n---\n\n%s",
+		title, currentDate, description, tagsFormatted, authorFormatted, coverFormatted, weight, content)
+
+	// Create the date directory if it doesn't exist
+	if err := os.MkdirAll(dateDirectory, 0755); err != nil {
 		return err
 	}
 
 	// Write the markdown file
-	return os.WriteFile(filepath, []byte(markdownContent), 0644)
+	return os.WriteFile(fullPath, []byte(frontMatter), 0644)
 }
 
 // SelectDirectory opens a dialog to select a directory
@@ -144,49 +181,4 @@ func (a *App) SelectImageDirectory() (string, error) {
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "选择图片保存目录",
 	})
-}
-
-// SelectGitRepoDirectory opens a dialog to select a directory containing a .git folder
-func (a *App) SelectGitRepoDirectory() (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择 Git 仓库目录（包含 .git 文件夹的目录）",
-	})
-}
-
-// IsValidGitRepo checks if the given directory is a valid git repository
-func (a *App) IsValidGitRepo(directory string) (bool, error) {
-	gitDir := filepath.Join(directory, ".git")
-	_, err := os.Stat(gitDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-// CommitToGit commits the saved post to git
-func (a *App) CommitToGit(directory, filename string) error {
-	// Check if the directory is a git repository
-	gitDir := filepath.Join(directory, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		return fmt.Errorf("directory is not a git repository: %s", directory)
-	}
-
-	// Change to the directory
-	cmd := exec.Command("git", "add", filename)
-	cmd.Dir = directory
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git add failed: %w", err)
-	}
-
-	// Commit the file
-	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Add post: %s", filename))
-	cmd.Dir = directory
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git commit failed: %w", err)
-	}
-
-	return nil
 }

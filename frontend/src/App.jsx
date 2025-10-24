@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import './App.css';
 import MdEditor from 'react-markdown-editor-lite';
+import MarkdownIt from 'markdown-it';
 import 'react-markdown-editor-lite/lib/index.css';
-import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SelectGitRepoDirectory, IsValidGitRepo, CommitToGit, SaveAndCompressImage } from "../wailsjs/go/main/App";
+import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage } from "../wailsjs/go/main/App";
 import { useTheme } from './ThemeProvider';
-import { SunIcon, MoonIcon } from '@heroicons/react/24/outline';
+import { SunIcon, MoonIcon, XMarkIcon } from '@heroicons/react/24/outline';
+
+// 初始化markdown解析器
+const mdParser = new MarkdownIt();
 
 function ThemeToggle() {
   const { darkMode, toggleDarkMode } = useTheme();
@@ -26,11 +30,15 @@ function ThemeToggle() {
 
 function App() {
     const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [tags, setTags] = useState('');
+    const [author, setAuthor] = useState('Aries');
+    const [weight, setWeight] = useState(1);
     const [content, setContent] = useState('');
     const [coverImage, setCoverImage] = useState(null);
     const [saveDirectory, setSaveDirectory] = useState('');
     const [imageDirectory, setImageDirectory] = useState('');
-    const [gitRepoDirectory, setGitRepoDirectory] = useState('');
+    const [rootDirectory, setRootDirectory] = useState('');
     
     const handleEditorChange = ({ html, text }) => {
         setContent(text);
@@ -54,18 +62,12 @@ function App() {
         }
     };
 
-    const selectGitRepoDirectory = async () => {
+    const selectRootDirectory = async () => {
         try {
-            const directory = await SelectGitRepoDirectory();
-            // Check if the selected directory is a valid git repository
-            const isValid = await IsValidGitRepo(directory);
-            if (!isValid) {
-                alert('所选目录不是有效的 Git 仓库（不包含 .git 文件夹）');
-                return;
-            }
-            setGitRepoDirectory(directory);
+            const directory = await SelectDirectory();
+            setRootDirectory(directory);
         } catch (error) {
-            console.error('Failed to select git repo directory:', error);
+            console.error('Failed to select root directory:', error);
         }
     };
 
@@ -78,56 +80,57 @@ function App() {
         try {
             // If there's a cover image, compress and save it
             let coverImagePath = '';
+            let imageSavePath = ''; // 用于保存图片的实际路径
             if (coverImage && imageDirectory) {
                 // Generate a unique filename for the image
                 const timestamp = new Date().getTime();
                 const imageName = `cover-${timestamp}${getFileExtension(coverImage.name)}`;
-                const imagePath = `${imageDirectory}/${imageName}`;
+                
+                // Create image save path with mixed separators as requested
+                // E.g., E:\workshop\xiaomizhou.net\ai-sites\static\images\uploads/cover-1761294707491.png
+                imageSavePath = `${imageDirectory}/${imageName}`.replace(/\//g, '\\'); // 先将所有正斜杠替换为反斜杠
+                // 然后将最后一个反斜杠替换为正斜杠，以匹配您要求的格式
+                const lastBackslashIndex = imageSavePath.lastIndexOf('\\');
+                if (lastBackslashIndex !== -1) {
+                    imageSavePath = imageSavePath.substring(0, lastBackslashIndex) + '/' + imageSavePath.substring(lastBackslashIndex + 1);
+                }
                 
                 // Read the file as base64 string
                 const base64Data = await readFileAsBase64(coverImage);
                 
                 // Compress and save the image
-                await SaveAndCompressImage(base64Data, coverImage.name, imagePath);
+                await SaveAndCompressImage(base64Data, coverImage.name, imageSavePath);
                 
-                coverImagePath = imagePath;
+                // Convert image path to URL path for front matter if root directory is set
+                if (rootDirectory && imageSavePath.startsWith(rootDirectory)) {
+                    // Remove root directory prefix and convert to URL format
+                    coverImagePath = imageSavePath.substring(rootDirectory.length).replace(/\\/g, '/');
+                    // Ensure path starts with '/'
+                    if (!coverImagePath.startsWith('/')) {
+                        coverImagePath = '/' + coverImagePath;
+                    }
+                    // Remove /static prefix if present
+                    if (coverImagePath.startsWith('/static/')) {
+                        coverImagePath = coverImagePath.substring(7); // Remove '/static' (7 characters)
+                    } else if (coverImagePath.startsWith('/static')) {
+                        coverImagePath = coverImagePath.substring(7); // Remove '/static' (7 characters)
+                    }
+                } else {
+                    // If no root directory is set, use the full path converted to URL format
+                    coverImagePath = imageSavePath.replace(/\\/g, '/');
+                }
             }
 
-            // Save the post
-            await SavePost(title, content, coverImagePath, saveDirectory);
+            // Parse tags from comma-separated string to array
+            const tagsArray = tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+
+            // Save the post with new parameters and get the filename
+            await SavePost(title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight));
             
-            // Get the filename that was created
-            const currentDate = new Date().toISOString().split('T')[0];
-            // Replace spaces and special characters in title for filename
-            const safeTitle = title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '-').replace(/-+/g, '-');
-            const filename = `${currentDate}-${safeTitle}.md`;
-            
-            // Commit to git
-            if (gitRepoDirectory) {
-                // Use the selected git repo directory
-                await CommitToGit(gitRepoDirectory, filename);
-            } else {
-                // Fallback to save directory
-                await CommitToGit(saveDirectory, filename);
-            }
-            
-            alert('文章发布成功并已提交到Git！');
+            alert('文章发布成功！');
         } catch (error) {
             console.error('Failed to publish post:', error);
-            // Provide more detailed error information
-            let errorMessage = '未知错误';
-            if (error.message) {
-                errorMessage = error.message;
-                // Provide user-friendly error messages for common git issues
-                if (errorMessage.includes('git add failed') && errorMessage.includes('128')) {
-                    errorMessage = 'Git 操作失败：请选择一个已初始化的 Git 仓库目录，或在该目录中运行 "git init" 初始化仓库。';
-                } else if (errorMessage.includes('directory is not a git repository')) {
-                    errorMessage = '所选目录不是 Git 仓库：请选择一个已初始化的 Git 仓库目录。';
-                }
-            } else if (typeof error === 'string') {
-                errorMessage = error;
-            }
-            alert('发布失败：' + errorMessage);
+            alert('发布失败：' + (error.message || error));
         }
     };
 
@@ -150,6 +153,9 @@ function App() {
         return filename.slice(filename.lastIndexOf("."));
     };
 
+    // 清空输入框的函数
+    const clearInput = (setter) => () => setter('');
+
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-6 flex flex-col justify-center sm:py-12">
             <div className="relative py-3 w-full px-4 sm:px-6 lg:px-8">
@@ -166,13 +172,113 @@ function App() {
                                 <div className="w-full">
                                     <div className="flex-1 min-w-0">
                                         <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">标题</label>
-                                        <input 
-                                            type="text" 
-                                            value={title}
-                                            onChange={(e) => setTitle(e.target.value)}
-                                            className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            placeholder="请输入文章标题"
-                                        />
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={title}
+                                                onChange={(e) => setTitle(e.target.value)}
+                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                placeholder="请输入文章标题"
+                                            />
+                                            {title && (
+                                                <button 
+                                                    onClick={clearInput(setTitle)}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                >
+                                                    <XMarkIcon className="h-5 w-5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-full">
+                                    <div className="flex-1 min-w-0">
+                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">摘要</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={description}
+                                                onChange={(e) => setDescription(e.target.value)}
+                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                placeholder="请输入文章摘要"
+                                            />
+                                            {description && (
+                                                <button 
+                                                    onClick={clearInput(setDescription)}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                >
+                                                    <XMarkIcon className="h-5 w-5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="w-full">
+                                        <div className="flex-1 min-w-0">
+                                            <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">标签 (逗号分隔)</label>
+                                            <div className="relative">
+                                                <input 
+                                                    type="text" 
+                                                    value={tags}
+                                                    onChange={(e) => setTags(e.target.value)}
+                                                    className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                    placeholder="例如: AI, 技术, 教程"
+                                                />
+                                                {tags && (
+                                                    <button 
+                                                        onClick={clearInput(setTags)}
+                                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                    >
+                                                        <XMarkIcon className="h-5 w-5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="w-full">
+                                        <div className="flex-1 min-w-0">
+                                            <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">作者</label>
+                                            <div className="relative">
+                                                <input 
+                                                    type="text" 
+                                                    value={author}
+                                                    onChange={(e) => setAuthor(e.target.value)}
+                                                    className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                    placeholder="请输入作者姓名"
+                                                />
+                                                {author && author !== 'Aries' && (
+                                                    <button 
+                                                        onClick={clearInput(setAuthor)}
+                                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                    >
+                                                        <XMarkIcon className="h-5 w-5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-full">
+                                    <div className="flex-1 min-w-0">
+                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">权重</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number" 
+                                                value={weight}
+                                                onChange={(e) => setWeight(e.target.value)}
+                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                placeholder="请输入权重值"
+                                            />
+                                            {weight !== 1 && (
+                                                <button 
+                                                    onClick={() => setWeight(1)}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                >
+                                                    <XMarkIcon className="h-5 w-5" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="w-full">
@@ -205,6 +311,27 @@ function App() {
                                         </div>
                                     </div>
                                 </div>
+                                {/* 根目录选择 */}
+                                <div className="w-full">
+                                    <div className="flex-1 min-w-0">
+                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">网站根目录 (用于生成图片URL路径)</label>
+                                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                                            <input 
+                                                type="text" 
+                                                value={rootDirectory}
+                                                readOnly
+                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                placeholder="请选择网站根目录"
+                                            />
+                                            <button 
+                                                onClick={selectRootDirectory}
+                                                className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-bold py-2 px-4 rounded inline-flex items-center whitespace-nowrap"
+                                            >
+                                                选择根目录
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div className="w-full">
                                     <div className="flex-1 min-w-0">
                                         <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">保存目录</label>
@@ -226,33 +353,13 @@ function App() {
                                     </div>
                                 </div>
                                 <div className="w-full">
-                                    <div className="flex-1 min-w-0">
-                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">Git 仓库目录</label>
-                                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                                            <input 
-                                                type="text" 
-                                                value={gitRepoDirectory}
-                                                readOnly
-                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                placeholder="请选择包含 .git 文件夹的目录"
-                                            />
-                                            <button 
-                                                onClick={selectGitRepoDirectory}
-                                                className="bg-purple-200 dark:bg-purple-700 hover:bg-purple-300 dark:hover:bg-purple-600 text-gray-800 dark:text-gray-200 font-bold py-2 px-4 rounded inline-flex items-center whitespace-nowrap"
-                                            >
-                                                选择 Git 仓库
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="w-full">
                                     <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">内容</label>
                                     <MdEditor 
                                         value={content} 
                                         style={{ height: '400px' }}
                                         className="w-full"
                                         onChange={handleEditorChange}
-                                        renderHTML={(text) => <div dangerouslySetInnerHTML={{ __html: text }} />}
+                                        renderHTML={(text) => mdParser.render(text)}
                                     />
                                 </div>
                                 <div className="pt-4 flex items-center space-x-4">

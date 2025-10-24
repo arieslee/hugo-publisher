@@ -57,3 +57,20 @@
     border: none;
     background-color: rgba(255, 255, 255, 1);
 }
+
+/* Toggle switch styles */
+.toggle-checkbox:checked {
+  right: 0;
+  border-color: #68D391;
+}
+.toggle-checkbox:checked + .toggle-label {
+  background-color: #68D391;
+}
+
+.toggle-checkbox {
+  transition: all 0.2s ease-in-out;
+}
+
+.toggle-label {
+  transition: all 0.2s ease-in-out;
+}
