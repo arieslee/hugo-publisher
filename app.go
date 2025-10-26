@@ -21,6 +21,17 @@ type App struct {
 	ctx context.Context
 }
 
+type PostInfo struct {
+	Title            string `json:"title"`
+	CoverImage       string `json:"coverImage"`
+	CoverImageBase64 string `json:"coverImageBase64"`
+}
+
+type ListPostsResult struct {
+	Posts      []PostInfo `json:"posts"`
+	TotalCount int        `json:"totalCount"`
+}
+
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{}
@@ -88,136 +99,176 @@ func (a *App) SaveAndCompressImage(base64Data string, originalFilename, dstPath 
 	return a.CompressImage(tempFile.Name(), dstPath)
 }
 
-// ListPosts lists all posts in the directory with pagination and search support
-func (a *App) ListPosts(directory string, page, pageSize int, search string) ([]string, int, error) {
-	posts := make([]string, 0)
+// parsePostInfo is a simplified parser for post front matter
+func parsePostInfo(filePath, rootDirectory string) PostInfo {
+	// Default title from filename
+	base := filepath.Base(filePath)
+	title := strings.TrimSuffix(base, ".md")
+	info := PostInfo{Title: title, CoverImage: ""}
 
-	// Check if directory exists
-	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		fmt.Printf("目录不存在: %s\n", directory)
-		return posts, 0, nil // Return empty list if directory doesn't exist
+	fileContent, err := os.ReadFile(filePath)
+	if err != nil {
+		return info // Return info with fallback title
 	}
 
-	fmt.Printf("正在读取目录: %s\n", directory)
+	contentStr := string(fileContent)
 
-	// Read directory entries
+	if !strings.HasPrefix(contentStr, "---") {
+		return info
+	}
+
+	parts := strings.SplitN(contentStr, "---", 3)
+	if len(parts) < 3 {
+		return info
+	}
+
+	frontMatter := parts[1]
+	lines := strings.Split(frontMatter, "\n")
+	inCoverBlock := false
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmedLine, "title:") {
+			titleParts := strings.SplitN(line, ":", 2)
+			if len(titleParts) == 2 {
+				// Trim quotes and spaces
+				info.Title = strings.Trim(strings.TrimSpace(titleParts[1]), "\"")
+			}
+			continue
+		}
+
+		if strings.HasPrefix(trimmedLine, "cover:") {
+			inCoverBlock = true
+			continue
+		}
+
+		if inCoverBlock && strings.HasPrefix(trimmedLine, "image:") {
+			imageParts := strings.SplitN(line, ":", 2)
+			if len(imageParts) == 2 {
+				info.CoverImage = strings.TrimSpace(imageParts[1])
+			}
+			inCoverBlock = false
+		}
+
+		if inCoverBlock && !strings.HasPrefix(line, " ") {
+			inCoverBlock = false
+		}
+	}
+
+	// If title from frontmatter is empty, use the fallback
+	if info.Title == "" {
+		info.Title = title
+	}
+
+	if info.CoverImage != "" && rootDirectory != "" {
+		fmt.Printf("Attempting to load cover image. Path from front matter: %s\n", info.CoverImage)
+		// The path in front matter might start with a '/', remove it
+		cleanCoverPath := strings.TrimPrefix(info.CoverImage, "/")
+		absPath := filepath.Join(rootDirectory, "static", cleanCoverPath)
+		fmt.Printf("Constructed absolute image path: %s\n", absPath)
+
+		// Read image file
+		data, err := os.ReadFile(absPath)
+		if err == nil {
+			fmt.Printf("Successfully read image file.\n")
+			// Encode to Base64
+			info.CoverImageBase64 = base64.StdEncoding.EncodeToString(data)
+		} else {
+			fmt.Printf("Failed to read image file: %v\n", err)
+		}
+	} else if info.CoverImage != "" {
+		fmt.Printf("Cover image found (%s), but root directory is not set. Skipping image loading.\n", info.CoverImage)
+	}
+
+	return info
+}
+
+// ListPosts lists all posts in the directory with pagination and search support
+func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, search string) (ListPostsResult, error) {
+	var allPosts []PostInfo
+
+	if _, err := os.Stat(directory); os.IsNotExist(err) {
+		return ListPostsResult{Posts: allPosts, TotalCount: 0}, nil
+	}
+
 	entries, err := os.ReadDir(directory)
 	if err != nil {
-		fmt.Printf("读取目录失败: %v\n", err)
-		return nil, 0, err
+		return ListPostsResult{}, err
 	}
 
-	fmt.Printf("目录中有 %d 个条目\n", len(entries))
-
-	// Collect all posts first
-	var allPosts []string
-
-	// Look for date directories and direct markdown files
 	for _, entry := range entries {
 		if entry.IsDir() {
-			// Check if the entry is a date directory (YYYY-MM-DD format)
 			if isValidDatePath(entry.Name()) {
-				fmt.Printf("发现日期目录: %s\n", entry.Name())
-				// Read files in the date directory
 				dateDirPath := filepath.Join(directory, entry.Name())
 				files, err := os.ReadDir(dateDirPath)
 				if err != nil {
-					fmt.Printf("读取日期目录失败 %s: %v\n", dateDirPath, err)
-					continue // Skip this directory if we can't read it
+					continue
 				}
 
-				// Add markdown files to the list
 				for _, file := range files {
 					if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
-						// Extract title from filename (remove .md extension)
-						title := strings.TrimSuffix(file.Name(), ".md")
-						fmt.Printf("  发现文章: %s (标题: %s)\n", file.Name(), title)
-
-						// Apply search filter if provided
+						mdFilePath := filepath.Join(dateDirPath, file.Name())
+						info := parsePostInfo(mdFilePath, rootDirectory)
+						if info.Title == "_index" {
+							continue
+						}
 						if search != "" {
-							// Convert both title and search term to lowercase for case-insensitive search
-							lowerTitle := strings.ToLower(title)
+							lowerTitle := strings.ToLower(info.Title)
 							lowerSearch := strings.ToLower(search)
-
-							// Check if title contains search term
 							if strings.Contains(lowerTitle, lowerSearch) {
-								allPosts = append(allPosts, title)
-								fmt.Printf("    -> 匹配搜索条件\n")
+								allPosts = append(allPosts, info)
 							}
 						} else {
-							// No search filter, add all posts
-							allPosts = append(allPosts, title)
-							fmt.Printf("    -> 添加到列表\n")
+							allPosts = append(allPosts, info)
 						}
 					}
 				}
 			}
 		} else if !entry.IsDir() && filepath.Ext(entry.Name()) == ".md" {
-			// Also check for markdown files directly in the directory (not in date folders)
-			// Extract title from filename (remove .md extension)
-			title := strings.TrimSuffix(entry.Name(), ".md")
-			fmt.Printf("发现直接文件: %s (标题: %s)\n", entry.Name(), title)
-
-			// Apply search filter if provided
+			mdFilePath := filepath.Join(directory, entry.Name())
+			info := parsePostInfo(mdFilePath, rootDirectory)
+			if info.Title == "_index" {
+				continue
+			}
 			if search != "" {
-				// Convert both title and search term to lowercase for case-insensitive search
-				lowerTitle := strings.ToLower(title)
+				lowerTitle := strings.ToLower(info.Title)
 				lowerSearch := strings.ToLower(search)
-
-				// Check if title contains search term
 				if strings.Contains(lowerTitle, lowerSearch) {
-					allPosts = append(allPosts, title)
-					fmt.Printf("  -> 匹配搜索条件\n")
+					allPosts = append(allPosts, info)
 				}
 			} else {
-				// No search filter, add all posts
-				allPosts = append(allPosts, title)
-				fmt.Printf("  -> 添加到列表\n")
+				allPosts = append(allPosts, info)
 			}
 		}
 	}
 
-	// Calculate total count
 	totalCount := len(allPosts)
-	fmt.Printf("总共找到 %d 篇文章\n", totalCount)
 
-	// If no posts, return empty slice
 	if totalCount == 0 {
-		fmt.Printf("没有找到文章，返回空列表\n")
-		return posts, 0, nil
+		return ListPostsResult{Posts: allPosts, TotalCount: 0}, nil
 	}
 
-	// Calculate pagination
 	if page < 1 {
 		page = 1
 	}
 	if pageSize <= 0 {
-		pageSize = 10 // Default page size
+		pageSize = 10
 	}
-
-	fmt.Printf("分页信息 - 页码: %d, 页面大小: %d, 总数: %d\n", page, pageSize, totalCount)
 
 	startIndex := (page - 1) * pageSize
 	endIndex := startIndex + pageSize
 
-	// Adjust endIndex if it exceeds the total count
 	if endIndex > totalCount {
 		endIndex = totalCount
 	}
 
-	// If startIndex is beyond totalCount, return empty slice
 	if startIndex >= totalCount {
-		fmt.Printf("起始索引超出范围，返回空列表\n")
-		return posts, totalCount, nil
+		return ListPostsResult{Posts: nil, TotalCount: totalCount}, nil
 	}
 
-	// Extract the posts for the current page
-	posts = allPosts[startIndex:endIndex]
-	fmt.Printf("返回第 %d 页的数据，共 %d 篇文章\n", page, len(posts))
-
-	// 确保返回正确的数据格式
-	fmt.Printf("返回结果: posts长度=%d, totalCount=%d, error=nil\n", len(posts), totalCount)
-	return posts, totalCount, nil
+	pagedPosts := allPosts[startIndex:endIndex]
+	return ListPostsResult{Posts: pagedPosts, TotalCount: totalCount}, nil
 }
 
 // ListPostsSimple lists all posts in the directory, returning only the post titles

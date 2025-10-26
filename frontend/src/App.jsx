@@ -3,7 +3,7 @@ import './App.css';
 import MdEditor from 'react-markdown-editor-lite';
 import MarkdownIt from 'markdown-it';
 import 'react-markdown-editor-lite/lib/index.css';
-import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage, CheckTitleDuplicate, DeletePost, UpdatePost, ListPosts, LoadPost, ListPostsSimple } from "../wailsjs/go/main/App";
+import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage, CheckTitleDuplicate, DeletePost, UpdatePost, ListPosts, LoadPost } from "../wailsjs/go/main/App";
 import { useTheme } from './ThemeProvider';
 import { SunIcon, MoonIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import PostListModal from './PostListModal';
@@ -49,7 +49,7 @@ function App() {
     const [selectedPost, setSelectedPost] = useState(null); // 当前选中的文章
     const [currentPage, setCurrentPage] = useState(1); // 当前页码
     const [totalPosts, setTotalPosts] = useState(0); // 总文章数
-    const [pageSize] = useState(10); // 每页显示的文章数
+    const [pageSize] = useState(5); // 每页显示的文章数
     const [isPostListModalOpen, setIsPostListModalOpen] = useState(false); // 文章列表模态框状态
     
     // 检查标题是否重复
@@ -112,18 +112,17 @@ function App() {
         setLoadingPosts(true);
         try {
             // 调用新的分页和搜索方法（空搜索字符串表示不搜索）
-            console.log('正在加载文章列表，目录:', saveDirectory, '页码:', page, '页面大小:', pageSize);
-            // ListPostsSimple 只返回文章列表数组
-            const postList = await ListPostsSimple(saveDirectory);
-            console.log('后端返回结果:', postList);
-            
-            console.log('解析后的文章列表:', postList);
-            setPosts(postList);
-            // 由于我们没有分页信息，这里简单设置总数
-            setTotalPosts(postList.length);
-            setCurrentPage(1);
-        } catch (error) {
+            const result = await ListPosts(saveDirectory, rootDirectory, page, pageSize, "");
+                        
+                                    const postList = result.posts || [];
+                                    const totalCount = result.totalCount || 0;                        setPosts(postList);
+                        setTotalPosts(totalCount);
+                        setCurrentPage(page);        } catch (error) {
             console.error('Failed to load posts:', error);
+            // 即使出错也设置一些默认值，确保UI能正常显示
+            setPosts([]);
+            setTotalPosts(0);
+            setCurrentPage(1);
         } finally {
             setLoadingPosts(false);
         }
@@ -136,8 +135,12 @@ function App() {
 
     // 页码改变时加载对应页面的文章
     const handlePageChange = (newPage) => {
-        if (newPage >= 1 && newPage <= Math.ceil(totalPosts / pageSize)) {
-            loadPosts(newPage);
+        // 确保页码在有效范围内
+        const maxPage = Math.ceil(totalPosts / pageSize) || 1;
+        const validPage = Math.max(1, Math.min(newPage, maxPage));
+        
+        if (validPage !== currentPage && !loadingPosts) {
+            loadPosts(validPage);
         }
     };
 
@@ -434,49 +437,11 @@ function App() {
         editPost(postTitle);
     };
 
-    // 测试加载文章列表的函数
-    const testLoadPosts = async () => {
-        try {
-            // 检查 Wails 环境
-            if (typeof window === 'undefined' || !window.go || !window.go.main || !window.go.main.App) {
-                alert('Wails 运行环境未正确初始化，请确保在 Wails 应用中运行');
-                return;
-            }
-            
-            // 使用默认的测试目录
-            const testDirectory = "E:\\workshop\\xiaomizhou.net\\ai-sites\\content\\posts";
-            console.log("测试加载文章列表，目录:", testDirectory);
-            
-            // 显示加载提示
-            console.log("正在调用 ListPostsSimple 函数...");
-            // ListPostsSimple 只返回文章列表数组
-            const postList = await ListPostsSimple(testDirectory);
-            console.log('测试结果:', postList);
-            
-            // 检查返回结果
-            if (!Array.isArray(postList)) {
-                throw new Error('返回结果不是数组格式: ' + typeof postList);
-            }
-            
-            const message = "成功加载文章列表！\n当前页文章数: " + postList.length + "\n\n前几篇文章:\n" + postList.slice(0, 5).join('\n');
-            alert(message);
-        } catch (error) {
-            console.error('测试加载文章失败:', error);
-            alert('测试失败: ' + (error.message || error.toString()));
-        }
-    };
+
 
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-6 flex flex-col justify-center sm:py-12">
-            {/* 测试按钮 */}
-            <div className="absolute top-0 right-0 p-4">
-                <button 
-                    onClick={testLoadPosts}
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mr-2"
-                >
-                    测试加载文章
-                </button>
-            </div>
+
             <div className="relative py-3 w-full px-4 sm:px-6 lg:px-8">
                 <div className="relative bg-white dark:bg-gray-800 shadow rounded-3xl overflow-hidden">
                     <div className="w-full mx-auto">
@@ -505,50 +470,36 @@ function App() {
                         </div>
                         <div className="divide-y divide-gray-200 dark:divide-gray-700 px-4 sm:px-6 md:px-8">
                             <div className="py-6 sm:py-8 text-base leading-6 space-y-4 text-gray-700 dark:text-gray-300 sm:text-lg sm:leading-7">
-                                {/* 保存目录选择 - 放在最前面 */}
-                                <div className="w-full bg-blue-50 dark:bg-blue-900 rounded-lg p-4 mb-6">
-                                    <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                                        <div className="flex-1">
-                                            <label className="font-medium text-gray-700 dark:text-gray-300 text-sm mb-1 block">保存目录</label>
-                                            <div className="flex">
-                                                <input 
-                                                    type="text" 
-                                                    value={saveDirectory}
-                                                    readOnly
-                                                    className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-l-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                    placeholder="请选择保存目录"
-                                                />
-                                                <button 
-                                                    onClick={selectDirectory}
-                                                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-lg whitespace-nowrap"
-                                                >
-                                                    选择
-                                                </button>
-                                            </div>
+                                <div className="w-full bg-blue-50 dark:bg-blue-900 rounded-lg p-4 mb-6 space-y-4">
+                                    {/* Root Directory */}
+                                    <div>
+                                        <label className="font-medium text-gray-700 dark:text-gray-300 text-sm mb-1 block">网站根目录 (用于定位图片)</label>
+                                        <div className="flex">
+                                            <input type="text" value={rootDirectory} readOnly className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-l-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="请选择您 Hugo 网站的根目录" />
+                                            <button onClick={selectRootDirectory} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-lg whitespace-nowrap">选择</button>
                                         </div>
-                                        
-                                        {/* 文章列表按钮 */}
-                                        {saveDirectory && (
-                                            <div className="flex items-end">
-                                                <button 
-                                                    onClick={() => loadPosts(currentPage)}
-                                                    disabled={loadingPosts}
-                                                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg whitespace-nowrap h-full flex items-center"
-                                                >
-                                                    {loadingPosts ? (
-                                                        <>
-                                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                            </svg>
-                                                            加载中...
-                                                        </>
-                                                    ) : '刷新列表'}
-                                                </button>
-                                            </div>
-                                        )}
+                                    </div>
+
+                                    {/* Save Directory */}
+                                    <div>
+                                        <label className="font-medium text-gray-700 dark:text-gray-300 text-sm mb-1 block">文章保存目录 (例如: .../content/posts)</label>
+                                        <div className="flex">
+                                            <input type="text" value={saveDirectory} readOnly className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-l-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="请选择 Hugo 文章的目标目录" />
+                                            <button onClick={selectDirectory} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-lg whitespace-nowrap">选择</button>
+                                        </div>
+                                    </div>
+
+                                    {/* Image Directory */}
+                                    <div>
+                                        <label className="font-medium text-gray-700 dark:text-gray-300 text-sm mb-1 block">图片保存目录 (例如: .../static/images)</label>
+                                        <div className="flex">
+                                            <input type="text" value={imageDirectory} readOnly className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-l-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="请选择图片上传的目标目录" />
+                                            <button onClick={selectImageDirectory} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-lg whitespace-nowrap">选择</button>
+                                        </div>
                                     </div>
                                 </div>
+
+
                                 
                                 {/* 文章列表 - 独立的醒目区域 */}
                                 {saveDirectory && (
@@ -560,6 +511,8 @@ function App() {
                                             </span>
                                         </div>
                                         
+
+                                        
                                         {posts.length > 0 ? (
                                             <>
                                                 <div className="border border-gray-300 dark:border-gray-600 rounded-lg max-h-60 overflow-y-auto">
@@ -567,27 +520,37 @@ function App() {
                                                         <div 
                                                             key={index} 
                                                             className={`flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-600 last:border-b-0 ${
-                                                                selectedPost === post 
+                                                                selectedPost === post.title 
                                                                     ? 'bg-blue-100 dark:bg-blue-900' 
                                                                     : 'hover:bg-gray-100 dark:hover:bg-gray-600'
                                                             }`}
                                                         >
-                                                            <span 
-                                                                className="cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex-1 truncate mr-2"
-                                                                onClick={() => editPost(post)}
-                                                            >
-                                                                {post}
-                                                            </span>
-                                                            <div className="flex space-x-2">
+                                                            <div className="flex-1 flex items-center min-w-0">
+                                                                {post.coverImageBase64 && (
+                                                                    <img 
+                                                                        src={`data:image/auto;base64,${post.coverImageBase64}`} 
+                                                                        alt={post.title}
+                                                                        className="w-16 h-10 object-cover rounded mr-4 flex-shrink-0"
+                                                                    />
+                                                                )}
+                                                                <span 
+                                                                    className="cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 truncate"
+                                                                    onClick={() => editPost(post.title)}
+                                                                    title={post.title}
+                                                                >
+                                                                    {post.title}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex space-x-2 ml-4">
                                                                 <button 
-                                                                    onClick={() => editPost(post)}
+                                                                    onClick={() => editPost(post.title)}
                                                                     className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 p-1"
                                                                     title="编辑"
                                                                 >
                                                                     <PencilIcon className="h-4 w-4" />
                                                                 </button>
                                                                 <button 
-                                                                    onClick={() => deletePost(post)}
+                                                                    onClick={() => deletePost(post.title)}
                                                                     className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 p-1"
                                                                     title="删除"
                                                                 >
@@ -603,29 +566,42 @@ function App() {
                                                     <div className="text-sm text-gray-600 dark:text-gray-400">
                                                         第 {currentPage} 页，共 {Math.ceil(totalPosts / pageSize)} 页
                                                     </div>
-                                                    <div className="flex space-x-2">
-                                                        <button
-                                                            onClick={() => handlePageChange(currentPage - 1)}
-                                                            disabled={currentPage <= 1 || loadingPosts}
-                                                            className={`px-3 py-1 rounded ${
-                                                                currentPage <= 1 || loadingPosts
-                                                                    ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
-                                                                    : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300'
-                                                            }`}
-                                                        >
-                                                            上一页
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handlePageChange(currentPage + 1)}
-                                                            disabled={currentPage >= Math.ceil(totalPosts / pageSize) || loadingPosts}
-                                                            className={`px-3 py-1 rounded ${
-                                                                currentPage >= Math.ceil(totalPosts / pageSize) || loadingPosts
-                                                                    ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
-                                                                    : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300'
-                                                            }`}
-                                                        >
-                                                            下一页
-                                                        </button>
+                                                    <div className="flex space-x-1">
+                                                        {Array.from({ length: Math.min(5, Math.ceil(totalPosts / pageSize)) }, (_, i) => {
+                                                            const pageNumber = i + 1;
+                                                            return (
+                                                                <button
+                                                                    key={pageNumber}
+                                                                    onClick={() => handlePageChange(pageNumber)}
+                                                                    disabled={pageNumber === currentPage || loadingPosts}
+                                                                    className={`px-3 py-1 rounded text-sm ${
+                                                                        pageNumber === currentPage
+                                                                            ? 'bg-blue-500 text-white cursor-default'
+                                                                            : loadingPosts
+                                                                                ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
+                                                                                : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300'
+                                                                    }`}
+                                                                >
+                                                                    {pageNumber}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {Math.ceil(totalPosts / pageSize) > 5 && (
+                                                            <>
+                                                                <span className="px-2 py-1 text-gray-500">...</span>
+                                                                <button
+                                                                    onClick={() => handlePageChange(Math.ceil(totalPosts / pageSize))}
+                                                                    disabled={loadingPosts}
+                                                                    className={`px-3 py-1 rounded text-sm ${
+                                                                        loadingPosts
+                                                                            ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
+                                                                            : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300'
+                                                                    }`}
+                                                                >
+                                                                    {Math.ceil(totalPosts / pageSize)}
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </>
@@ -639,7 +615,14 @@ function App() {
                                                         </svg>
                                                         加载中...
                                                     </div>
-                                                ) : '暂无文章'}
+                                                ) : (
+                                                    <div>
+                                                        暂无文章
+                                                        <div className="text-xs mt-2">
+                                                            调试: posts.length={posts.length}, totalPosts={totalPosts}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -774,45 +757,11 @@ function App() {
                                                     className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-gray-700 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-gray-600"
                                                 />
                                             </div>
-                                            <div className="flex w-full sm:w-1/2">
-                                                <input 
-                                                    type="text" 
-                                                    value={imageDirectory}
-                                                    readOnly
-                                                    className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                    placeholder="图片保存目录"
-                                                />
-                                                <button 
-                                                    onClick={selectImageDirectory}
-                                                    className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-bold py-2 px-4 rounded inline-flex items-center whitespace-nowrap ml-2"
-                                                >
-                                                    选择
-                                                </button>
-                                            </div>
+                                
                                         </div>
                                     </div>
                                 </div>
-                                {/* 根目录选择 */}
-                                <div className="w-full">
-                                    <div className="flex-1 min-w-0">
-                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">网站根目录 (用于生成图片URL路径)</label>
-                                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                                            <input 
-                                                type="text" 
-                                                value={rootDirectory}
-                                                readOnly
-                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                placeholder="请选择网站根目录"
-                                            />
-                                            <button 
-                                                onClick={selectRootDirectory}
-                                                className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-bold py-2 px-4 rounded inline-flex items-center whitespace-nowrap"
-                                            >
-                                                选择根目录
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+
                                 <div className="w-full">
                                     <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">内容</label>
                                     <MdEditor 
