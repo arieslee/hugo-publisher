@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -218,66 +218,6 @@ func (a *App) ListPosts(directory string, page, pageSize int, search string) ([]
 	// 确保返回正确的数据格式
 	fmt.Printf("返回结果: posts长度=%d, totalCount=%d, error=nil\n", len(posts), totalCount)
 	return posts, totalCount, nil
-}
-
-// ListPostsSimple lists all posts in the directory, returning only the post titles
-func (a *App) ListPostsSimple(directory string) []string {
-	posts := make([]string, 0)
-
-	// Check if directory exists
-	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		fmt.Printf("目录不存在: %s\n", directory)
-		return posts // Return empty list if directory doesn't exist
-	}
-
-	fmt.Printf("正在读取目录: %s\n", directory)
-
-	// Read directory entries
-	entries, err := os.ReadDir(directory)
-	if err != nil {
-		fmt.Printf("读取目录失败: %v\n", err)
-		return posts
-	}
-
-	fmt.Printf("目录中有 %d 个条目\n", len(entries))
-
-	// Look for date directories and direct markdown files
-	for _, entry := range entries {
-		if entry.IsDir() {
-			// Check if the entry is a date directory (YYYY-MM-DD format)
-			if isValidDatePath(entry.Name()) {
-				fmt.Printf("发现日期目录: %s\n", entry.Name())
-				// Read files in the date directory
-				dateDirPath := filepath.Join(directory, entry.Name())
-				files, err := os.ReadDir(dateDirPath)
-				if err != nil {
-					fmt.Printf("读取日期目录失败 %s: %v\n", dateDirPath, err)
-					continue // Skip this directory if we can't read it
-				}
-
-				// Add markdown files to the list
-				for _, file := range files {
-					if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
-						// Extract title from filename (remove .md extension)
-						title := strings.TrimSuffix(file.Name(), ".md")
-						fmt.Printf("  发现文章: %s (标题: %s)\n", file.Name(), title)
-						posts = append(posts, title)
-						fmt.Printf("    -> 添加到列表\n")
-					}
-				}
-			}
-		} else if !entry.IsDir() && filepath.Ext(entry.Name()) == ".md" {
-			// Also check for markdown files directly in the directory (not in date folders)
-			// Extract title from filename (remove .md extension)
-			title := strings.TrimSuffix(entry.Name(), ".md")
-			fmt.Printf("发现直接文件: %s (标题: %s)\n", entry.Name(), title)
-			posts = append(posts, title)
-			fmt.Printf("  -> 添加到列表\n")
-		}
-	}
-
-	fmt.Printf("总共找到 %d 篇文章\n", len(posts))
-	return posts
 }
 
 // LoadPost loads a post's content

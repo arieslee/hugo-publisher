@@ -10,8 +10,24 @@ export function CompressImage(arg1, arg2) {
   return window['go']['main']['App']['CompressImage'](arg1, arg2);
 }
 
+export function DeletePost(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeletePost'](arg1, arg2, arg3, arg4);
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
+}
+
+export function ListPosts(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ListPosts'](arg1, arg2, arg3, arg4);
+}
+
+export function ListPostsSimple(arg1) {
+  return window['go']['main']['App']['ListPostsSimple'](arg1);
+}
+
+export function LoadPost(arg1, arg2) {
+  return window['go']['main']['App']['LoadPost'](arg1, arg2);
 }
 
 export function SaveAndCompressImage(arg1, arg2, arg3) {
@@ -28,4 +44,8 @@ export function SelectDirectory() {
 
 export function SelectImageDirectory() {
   return window['go']['main']['App']['SelectImageDirectory']();
+}
+
+export function UpdatePost(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['UpdatePost'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }

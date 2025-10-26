@@ -5,7 +5,15 @@ export function CheckTitleDuplicate(arg1:string,arg2:string):Promise<boolean>;
 
 export function CompressImage(arg1:string,arg2:string):Promise<void>;
 
+export function DeletePost(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function Greet(arg1:string):Promise<string>;
+
+export function ListPosts(arg1:string,arg2:number,arg3:number,arg4:string):Promise<Array<string>>;
+
+export function ListPostsSimple(arg1:string):Promise<Array<string>>;
+
+export function LoadPost(arg1:string,arg2:string):Promise<string>;
 
 export function SaveAndCompressImage(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -14,3 +22,5 @@ export function SavePost(arg1:string,arg2:string,arg3:string,arg4:string,arg5:st
 export function SelectDirectory():Promise<string>;
 
 export function SelectImageDirectory():Promise<string>;
+
+export function UpdatePost(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:Array<string>,arg9:number):Promise<void>;

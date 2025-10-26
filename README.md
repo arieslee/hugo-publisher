@@ -1,19 +1,52 @@
-# README
+# Hugo 内容发布工具
 
-## About
+这是一个用于发布 Hugo 静态网站内容的桌面应用程序。
 
-This is the official Wails React template.
+## 功能特性
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+1. **文章发布** - 创建包含完整 front matter 的 Markdown 文章
+2. **图片上传** - 自动压缩和上传文章图片
+3. **文章管理** - 查看、编辑和删除已发布的文章
+4. **重复检测** - 检测并防止重复标题的文章
+5. **Disqus 集成** - 自动生成 Disqus 标识和 URL
 
-## Live Development
+## 使用说明
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+### 1. 基本操作流程
 
-## Building
+1. **选择保存目录** - 点击"选择"按钮选择文章保存位置
+2. **填写文章信息** - 输入标题、摘要、标签、作者等信息
+3. **编写内容** - 在 Markdown 编辑器中编写文章内容
+4. **上传图片** - 可选择封面图片或在编辑器中上传内容图片
+5. **发布文章** - 点击"发布文章"按钮保存文章
 
-To build a redistributable, production mode package, use `wails build`.
+### 2. 文章列表功能
+
+选择保存目录后，应用程序会自动显示该目录下的所有文章：
+
+- **查看文章** - 文章列表会显示所有已发布的文章
+- **编辑文章** - 点击文章标题或编辑按钮进入编辑模式
+- **删除文章** - 点击删除按钮可删除文章及关联图片
+- **刷新列表** - 点击"刷新列表"按钮手动更新文章列表
+
+### 3. 编辑文章
+
+1. 在文章列表中点击要编辑的文章
+2. 文章内容会自动加载到编辑表单中
+3. 修改所需内容
+4. 点击"更新文章"按钮保存更改
+
+### 4. 删除文章
+
+1. 在文章列表中找到要删除的文章
+2. 点击文章右侧的删除按钮
+3. 确认删除操作
+4. 文章及其关联的图片将被一并删除
+
+## 技术细节
+
+- 使用 Wails 框架构建前后端一体化应用
+- 前端使用 React 和 Tailwind CSS
+- 后端使用 Go 语言实现
+- 图片自动压缩处理
+- 支持中英文标题和内容
