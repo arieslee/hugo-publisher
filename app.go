@@ -131,6 +131,11 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 		weight = 1
 	}
 
+	// 转义特殊字符
+	escapedTitle := escapeString(title)
+	escapedDescription := escapeString(description)
+	escapedAuthor := escapeString(author)
+
 	// Format tags as YAML array
 	tagsFormatted := ""
 	if len(tags) > 0 {
@@ -139,21 +144,23 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 			if i > 0 {
 				tagsFormatted += ", "
 			}
-			tagsFormatted += fmt.Sprintf("\"%s\"", tag)
+			escapedTag := escapeString(tag)
+			tagsFormatted += fmt.Sprintf("\"%s\"", escapedTag)
 		}
 		tagsFormatted += "]\n"
 	}
 
 	// Format author as YAML array
 	authorFormatted := ""
-	if author != "" {
-		authorFormatted = fmt.Sprintf("author: [\"%s\"]\n", author)
+	if escapedAuthor != "" {
+		authorFormatted = fmt.Sprintf("author: [\"%s\"]\n", escapedAuthor)
 	}
 
 	// Format cover image if provided
 	coverFormatted := ""
 	if coverImagePath != "" {
-		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: true\n", coverImagePath)
+		escapedCoverImagePath := escapeString(coverImagePath)
+		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: true\n", escapedCoverImagePath)
 	}
 
 	// Create disqus parameters
@@ -162,7 +169,7 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 
 	// Create the markdown content with enhanced front matter
 	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndisqus_identifier: \"%s\"\ndisqus_url: \"%s\"\ndate: %s\ndescription: \"%s\"\n%s%s%sweight: %d\n---\n\n%s",
-		title, disqusIdentifier, disqusURL, currentDate, description, tagsFormatted, authorFormatted, coverFormatted, weight, content)
+		escapedTitle, disqusIdentifier, disqusURL, currentDate, escapedDescription, tagsFormatted, authorFormatted, coverFormatted, weight, content)
 
 	// Create the date directory if it doesn't exist
 	if err := os.MkdirAll(dateDirectory, 0755); err != nil {
@@ -171,6 +178,74 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 
 	// Write the markdown file
 	return os.WriteFile(fullPath, []byte(frontMatter), 0644)
+}
+
+// escapeString escapes special characters in a string for YAML
+func escapeString(s string) string {
+	// Escape backslashes first
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	// Escape double quotes
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	return s
+}
+
+// CheckTitleDuplicate checks if a post with the same title already exists in the directory
+func (a *App) CheckTitleDuplicate(title, directory string) (bool, string, error) {
+	// Create a safe filename based on title only
+	safeTitle := strings.ToLower(title)                 // 全部转换为小写
+	safeTitle = strings.ReplaceAll(safeTitle, " ", "-") // 空格替换为连字符
+	safeTitle = strings.Map(func(r rune) rune {
+		// 只保留字母、数字、连字符和下划线
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+			return r
+		}
+		return -1
+	}, safeTitle)
+
+	// 限制标题长度以避免过长的文件名
+	if len(safeTitle) > 50 {
+		safeTitle = safeTitle[:50]
+	}
+
+	// 移除开头和结尾的连字符
+	safeTitle = strings.Trim(safeTitle, "-_")
+
+	// 如果标题变为空，使用默认名称
+	if safeTitle == "" {
+		safeTitle = "post"
+	}
+
+	// 创建文件名（不带日期前缀）
+	filename := fmt.Sprintf("%s.md", safeTitle)
+
+	// Check all date directories for the file
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return false, "", err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Check if the entry is a date directory (YYYY-MM-DD format)
+			if isValidDateDir(entry.Name()) {
+				// Check if the file exists in this date directory
+				fullPath := filepath.Join(directory, entry.Name(), filename)
+				if _, err := os.Stat(fullPath); err == nil {
+					// File exists
+					return true, fullPath, nil
+				}
+			}
+		}
+	}
+
+	return false, "", nil
+}
+
+// isValidDateDir checks if a directory name is in YYYY-MM-DD format
+func isValidDateDir(dirName string) bool {
+	// Check if the directory name matches the date format
+	_, err := time.Parse("2006-01-02", dirName)
+	return err == nil
 }
 
 // SelectDirectory opens a dialog to select a directory

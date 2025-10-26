@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import MdEditor from 'react-markdown-editor-lite';
 import MarkdownIt from 'markdown-it';
 import 'react-markdown-editor-lite/lib/index.css';
-import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage } from "../wailsjs/go/main/App";
+import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage, CheckTitleDuplicate } from "../wailsjs/go/main/App";
 import { useTheme } from './ThemeProvider';
 import { SunIcon, MoonIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -39,7 +39,31 @@ function App() {
     const [saveDirectory, setSaveDirectory] = useState('');
     const [imageDirectory, setImageDirectory] = useState('');
     const [rootDirectory, setRootDirectory] = useState('');
+    const [titleDuplicate, setTitleDuplicate] = useState(false); // 标题重复状态
+    const [duplicatePath, setDuplicatePath] = useState(''); // 重复文件路径
     
+    // 检查标题是否重复
+    useEffect(() => {
+        const checkDuplicate = async () => {
+            if (title && saveDirectory) {
+                try {
+                    const [isDuplicate, path] = await CheckTitleDuplicate(title, saveDirectory);
+                    setTitleDuplicate(isDuplicate);
+                    setDuplicatePath(path);
+                } catch (error) {
+                    console.error('Failed to check title duplicate:', error);
+                }
+            } else {
+                setTitleDuplicate(false);
+                setDuplicatePath('');
+            }
+        };
+
+        // 防抖处理，避免频繁检查
+        const timeoutId = setTimeout(checkDuplicate, 500);
+        return () => clearTimeout(timeoutId);
+    }, [title, saveDirectory]);
+
     const handleEditorChange = ({ html, text }) => {
         setContent(text);
     };
@@ -153,6 +177,58 @@ function App() {
         return filename.slice(filename.lastIndexOf("."));
     };
 
+    // 处理编辑器中的图片上传
+    const handleImageUpload = useCallback(async (file, callback) => {
+        if (!imageDirectory) {
+            alert('请先选择图片保存目录');
+            return false;
+        }
+
+        try {
+            // Generate a unique filename for the image
+            const timestamp = new Date().getTime();
+            const imageName = `editor-${timestamp}${getFileExtension(file.name)}`;
+            const imagePath = `${imageDirectory}/${imageName}`;
+            
+            // Read the file as base64 string
+            const base64Data = await readFileAsBase64(file);
+            
+            // Compress and save the image
+            await SaveAndCompressImage(base64Data, file.name, imagePath);
+            
+            // Convert image path to URL path if root directory is set
+            let imageUrl = imagePath;
+            if (rootDirectory && imagePath.startsWith(rootDirectory)) {
+                // Remove root directory prefix and convert to URL format
+                imageUrl = imagePath.substring(rootDirectory.length).replace(/\\/g, '/');
+                // Ensure path starts with '/'
+                if (!imageUrl.startsWith('/')) {
+                    imageUrl = '/' + imageUrl;
+                }
+                // Remove /static prefix if present
+                if (imageUrl.startsWith('/static/')) {
+                    imageUrl = imageUrl.substring(7); // Remove '/static' (7 characters)
+                } else if (imageUrl.startsWith('/static')) {
+                    imageUrl = imageUrl.substring(7); // Remove '/static' (7 characters)
+                }
+            } else {
+                // If no root directory is set, use the full path converted to URL format
+                imageUrl = imagePath.replace(/\\/g, '/');
+            }
+            
+            // 调用回调函数，插入图片到编辑器
+            callback({
+                url: imageUrl
+            });
+            
+            return true;
+        } catch (error) {
+            console.error('Failed to upload image:', error);
+            alert('图片上传失败：' + (error.message || error));
+            return false;
+        }
+    }, [imageDirectory, rootDirectory]);
+
     // 清空输入框的函数
     const clearInput = (setter) => () => setter('');
 
@@ -177,7 +253,7 @@ function App() {
                                                 type="text" 
                                                 value={title}
                                                 onChange={(e) => setTitle(e.target.value)}
-                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                className={`border ${titleDuplicate ? 'border-red-500' : 'border-gray-300'} dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10`}
                                                 placeholder="请输入文章标题"
                                             />
                                             {title && (
@@ -189,6 +265,11 @@ function App() {
                                                 </button>
                                             )}
                                         </div>
+                                        {titleDuplicate && (
+                                            <div className="text-red-500 text-sm mt-1">
+                                                警告：已存在相同标题的文章 ({duplicatePath})
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="w-full">
@@ -360,6 +441,8 @@ function App() {
                                         className="w-full"
                                         onChange={handleEditorChange}
                                         renderHTML={(text) => mdParser.render(text)}
+                                        onImageUpload={handleImageUpload}
+                                        placeholder="在此输入内容，可直接粘贴或拖拽图片上传..."
                                     />
                                 </div>
                                 <div className="pt-4 flex items-center space-x-4">
