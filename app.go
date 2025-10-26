@@ -156,9 +156,13 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: true\n", coverImagePath)
 	}
 
+	// Create disqus parameters
+	disqusIdentifier := safeTitle
+	disqusURL := fmt.Sprintf("https://xiaomizhou.net/%s/%s/", currentDate, safeTitle) // 需要替换为实际域名
+
 	// Create the markdown content with enhanced front matter
-	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndate: %s\ndescription: \"%s\"\n%s%s%sweight: %d\n---\n\n%s",
-		title, currentDate, description, tagsFormatted, authorFormatted, coverFormatted, weight, content)
+	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndisqus_identifier: \"%s\"\ndisqus_url: \"%s\"\ndate: %s\ndescription: \"%s\"\n%s%s%sweight: %d\n---\n\n%s",
+		title, disqusIdentifier, disqusURL, currentDate, description, tagsFormatted, authorFormatted, coverFormatted, weight, content)
 
 	// Create the date directory if it doesn't exist
 	if err := os.MkdirAll(dateDirectory, 0755); err != nil {
