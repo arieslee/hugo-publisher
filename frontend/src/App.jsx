@@ -659,13 +659,13 @@ function App() {
                                     <div className="flex-1 min-w-0">
                                         <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">摘要</label>
                                         <div className="relative">
-                                            <input 
-                                                type="text" 
+                                            <textarea
                                                 value={description}
                                                 onChange={(e) => setDescription(e.target.value)}
                                                 className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
                                                 placeholder="请输入文章摘要"
-                                            />
+                                                rows="3"
+                                            ></textarea>
                                             {description && (
                                                 <button 
                                                     onClick={clearInput(setDescription)}
