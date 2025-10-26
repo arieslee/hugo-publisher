@@ -50,3 +50,8 @@
 - 后端使用 Go 语言实现
 - 图片自动压缩处理
 - 支持中英文标题和内容
+
+
+## 打包命令
+
+`wails build -clean -o win-hugo-publisher-x64-1.x.exe`
