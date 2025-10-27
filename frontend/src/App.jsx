@@ -51,7 +51,53 @@ function App() {
     const [totalPosts, setTotalPosts] = useState(0); // 总文章数
     const [pageSize] = useState(5); // 每页显示的文章数
     const [isPostListModalOpen, setIsPostListModalOpen] = useState(false); // 文章列表模态框状态
+    const [autoSaveDirectories, setAutoSaveDirectories] = useState(true); // 是否自动保存目录
     
+    // 应用启动时加载保存的目录
+    useEffect(() => {
+        const loadSavedDirectories = () => {
+            try {
+                const savedSettings = localStorage.getItem('hugoPublisherSettings');
+                if (savedSettings) {
+                    const settings = JSON.parse(savedSettings);
+                    setAutoSaveDirectories(settings.autoSaveDirectories !== false); // 默认为true
+                    
+                    if (settings.autoSaveDirectories !== false) {
+                        if (settings.saveDirectory) setSaveDirectory(settings.saveDirectory);
+                        if (settings.imageDirectory) setImageDirectory(settings.imageDirectory);
+                        if (settings.rootDirectory) setRootDirectory(settings.rootDirectory);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load saved directories:', error);
+            }
+        };
+        
+        loadSavedDirectories();
+    }, []);
+    
+    // 保存目录到本地存储
+    const saveDirectoriesToLocalStorage = useCallback(() => {
+        if (autoSaveDirectories) {
+            try {
+                const settings = {
+                    autoSaveDirectories: true,
+                    saveDirectory,
+                    imageDirectory,
+                    rootDirectory
+                };
+                localStorage.setItem('hugoPublisherSettings', JSON.stringify(settings));
+            } catch (error) {
+                console.error('Failed to save directories to localStorage:', error);
+            }
+        }
+    }, [autoSaveDirectories, saveDirectory, imageDirectory, rootDirectory]);
+    
+    // 当目录改变时保存到本地存储
+    useEffect(() => {
+        saveDirectoriesToLocalStorage();
+    }, [saveDirectory, imageDirectory, rootDirectory, saveDirectoriesToLocalStorage]);
+
     // 检查标题是否重复
     useEffect(() => {
         const checkDuplicate = async () => {
@@ -102,6 +148,20 @@ function App() {
             setRootDirectory(directory);
         } catch (error) {
             console.error('Failed to select root directory:', error);
+        }
+    };
+
+    // 切换自动保存目录功能
+    const toggleAutoSaveDirectories = () => {
+        const newAutoSaveState = !autoSaveDirectories;
+        setAutoSaveDirectories(newAutoSaveState);
+        
+        // 如果关闭自动保存，清除本地存储
+        if (!newAutoSaveState) {
+            localStorage.removeItem('hugoPublisherSettings');
+        } else {
+            // 如果开启自动保存，立即保存当前目录
+            saveDirectoriesToLocalStorage();
         }
     };
 
@@ -471,6 +531,20 @@ function App() {
                         <div className="divide-y divide-gray-200 dark:divide-gray-700 px-4 sm:px-6 md:px-8">
                             <div className="py-6 sm:py-8 text-base leading-6 space-y-4 text-gray-700 dark:text-gray-300 sm:text-lg sm:leading-7">
                                 <div className="w-full bg-blue-50 dark:bg-blue-900 rounded-lg p-4 mb-6 space-y-4">
+                                    {/* 自动保存目录选项 */}
+                                    <div className="flex items-center mb-2">
+                                        <input
+                                            type="checkbox"
+                                            id="autoSaveDirectories"
+                                            checked={autoSaveDirectories}
+                                            onChange={toggleAutoSaveDirectories}
+                                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                        />
+                                        <label htmlFor="autoSaveDirectories" className="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
+                                            自动保存目录选择
+                                        </label>
+                                    </div>
+                                    
                                     {/* Root Directory */}
                                     <div>
                                         <label className="font-medium text-gray-700 dark:text-gray-300 text-sm mb-1 block">网站根目录 (用于定位图片)</label>
@@ -759,6 +833,28 @@ function App() {
                                             </div>
                                 
                                         </div>
+                                        {/* 封面图片预览 */}
+                                        {coverImage && (
+                                            <div className="mt-2 flex items-center">
+                                                <div className="relative">
+                                                    <img 
+                                                        src={URL.createObjectURL(coverImage)} 
+                                                        alt="封面预览" 
+                                                        className="w-24 h-24 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                                                    />
+                                                    <button
+                                                        onClick={() => setCoverImage(null)}
+                                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 focus:outline-none"
+                                                        title="移除图片"
+                                                    >
+                                                        <XMarkIcon className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="ml-3 text-sm text-gray-600 dark:text-gray-400">
+                                                    {coverImage.name}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
