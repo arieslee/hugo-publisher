@@ -162,23 +162,23 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 	}
 
 	if info.CoverImage != "" && rootDirectory != "" {
-		fmt.Printf("Attempting to load cover image. Path from front matter: %s\n", info.CoverImage)
+		// fmt.Printf("Attempting to load cover image. Path from front matter: %s\n", info.CoverImage)
 		// The path in front matter might start with a '/', remove it
 		cleanCoverPath := strings.TrimPrefix(info.CoverImage, "/")
 		absPath := filepath.Join(rootDirectory, "static", cleanCoverPath)
-		fmt.Printf("Constructed absolute image path: %s\n", absPath)
+		// fmt.Printf("Constructed absolute image path: %s\n", absPath)
 
 		// Read image file
 		data, err := os.ReadFile(absPath)
 		if err == nil {
-			fmt.Printf("Successfully read image file.\n")
+			// fmt.Printf("Successfully read image file.\n")
 			// Encode to Base64
 			info.CoverImageBase64 = base64.StdEncoding.EncodeToString(data)
 		} else {
-			fmt.Printf("Failed to read image file: %v\n", err)
+			// fmt.Printf("Failed to read image file: %v\n", err)
 		}
 	} else if info.CoverImage != "" {
-		fmt.Printf("Cover image found (%s), but root directory is not set. Skipping image loading.\n", info.CoverImage)
+		// fmt.Printf("Cover image found (%s), but root directory is not set. Skipping image loading.\n", info.CoverImage)
 	}
 
 	return info
@@ -186,30 +186,41 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 
 // ListPosts lists all posts in the directory with pagination and search support
 func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, search string) (ListPostsResult, error) {
+	// fmt.Printf("ListPosts called with directory: %s, rootDirectory: %s, page: %d, pageSize: %d, search: %s\n", directory, rootDirectory, page, pageSize, search)
+
 	var allPosts []PostInfo
 
 	if _, err := os.Stat(directory); os.IsNotExist(err) {
+		// fmt.Printf("目录不存在: %s\n", directory)
 		return ListPostsResult{Posts: allPosts, TotalCount: 0}, nil
 	}
 
 	entries, err := os.ReadDir(directory)
 	if err != nil {
+		// fmt.Printf("读取目录失败: %v\n", err)
 		return ListPostsResult{}, err
 	}
+
+	// fmt.Printf("目录中有 %d 个条目\n", len(entries))
 
 	for _, entry := range entries {
 		if entry.IsDir() {
 			if isValidDatePath(entry.Name()) {
+				// fmt.Printf("发现日期目录: %s\n", entry.Name())
 				dateDirPath := filepath.Join(directory, entry.Name())
 				files, err := os.ReadDir(dateDirPath)
 				if err != nil {
+					// fmt.Printf("读取日期目录失败 %s: %v\n", dateDirPath, err)
 					continue
 				}
 
 				for _, file := range files {
 					if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
 						mdFilePath := filepath.Join(dateDirPath, file.Name())
+						// fmt.Printf("处理文章文件: %s\n", mdFilePath)
 						info := parsePostInfo(mdFilePath, rootDirectory)
+						// fmt.Printf("解析文章信息: %+v\n", info)
+
 						if info.Title == "_index" {
 							continue
 						}
@@ -218,16 +229,21 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 							lowerSearch := strings.ToLower(search)
 							if strings.Contains(lowerTitle, lowerSearch) {
 								allPosts = append(allPosts, info)
+								// fmt.Printf("  -> 匹配搜索条件，添加到列表\n")
 							}
 						} else {
 							allPosts = append(allPosts, info)
+							// fmt.Printf("  -> 添加到列表\n")
 						}
 					}
 				}
 			}
 		} else if !entry.IsDir() && filepath.Ext(entry.Name()) == ".md" {
 			mdFilePath := filepath.Join(directory, entry.Name())
+			// fmt.Printf("处理直接文件: %s\n", mdFilePath)
 			info := parsePostInfo(mdFilePath, rootDirectory)
+			// fmt.Printf("解析直接文件信息: %+v\n", info)
+
 			if info.Title == "_index" {
 				continue
 			}
@@ -236,14 +252,17 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 				lowerSearch := strings.ToLower(search)
 				if strings.Contains(lowerTitle, lowerSearch) {
 					allPosts = append(allPosts, info)
+					// fmt.Printf("  -> 匹配搜索条件，添加到列表\n")
 				}
 			} else {
 				allPosts = append(allPosts, info)
+				// fmt.Printf("  -> 添加到列表\n")
 			}
 		}
 	}
 
 	totalCount := len(allPosts)
+	// fmt.Printf("总共找到 %d 篇文章\n", totalCount)
 
 	if totalCount == 0 {
 		return ListPostsResult{Posts: allPosts, TotalCount: 0}, nil
@@ -253,7 +272,7 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 		page = 1
 	}
 	if pageSize <= 0 {
-		pageSize = 10
+		pageSize = 5 // 使用与前端一致的页面大小
 	}
 
 	startIndex := (page - 1) * pageSize
@@ -264,10 +283,13 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 	}
 
 	if startIndex >= totalCount {
-		return ListPostsResult{Posts: nil, TotalCount: totalCount}, nil
+		// fmt.Printf("起始索引超出范围，返回空列表\n")
+		return ListPostsResult{Posts: []PostInfo{}, TotalCount: totalCount}, nil
 	}
 
 	pagedPosts := allPosts[startIndex:endIndex]
+	// fmt.Printf("返回第 %d 页的数据，共 %d 篇文章\n", page, len(pagedPosts))
+
 	return ListPostsResult{Posts: pagedPosts, TotalCount: totalCount}, nil
 }
 
@@ -277,32 +299,32 @@ func (a *App) ListPostsSimple(directory string) []string {
 
 	// Check if directory exists
 	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		fmt.Printf("目录不存在: %s\n", directory)
+		// fmt.Printf("目录不存在: %s\n", directory)
 		return posts // Return empty list if directory doesn't exist
 	}
 
-	fmt.Printf("正在读取目录: %s\n", directory)
+	// fmt.Printf("正在读取目录: %s\n", directory)
 
 	// Read directory entries
 	entries, err := os.ReadDir(directory)
 	if err != nil {
-		fmt.Printf("读取目录失败: %v\n", err)
+		// fmt.Printf("读取目录失败: %v\n", err)
 		return posts
 	}
 
-	fmt.Printf("目录中有 %d 个条目\n", len(entries))
+	// fmt.Printf("目录中有 %d 个条目\n", len(entries))
 
 	// Look for date directories and direct markdown files
 	for _, entry := range entries {
 		if entry.IsDir() {
 			// Check if the entry is a date directory (YYYY-MM-DD format)
 			if isValidDatePath(entry.Name()) {
-				fmt.Printf("发现日期目录: %s\n", entry.Name())
+				// fmt.Printf("发现日期目录: %s\n", entry.Name())
 				// Read files in the date directory
 				dateDirPath := filepath.Join(directory, entry.Name())
 				files, err := os.ReadDir(dateDirPath)
 				if err != nil {
-					fmt.Printf("读取日期目录失败 %s: %v\n", dateDirPath, err)
+					// fmt.Printf("读取日期目录失败 %s: %v\n", dateDirPath, err)
 					continue // Skip this directory if we can't read it
 				}
 
@@ -311,9 +333,9 @@ func (a *App) ListPostsSimple(directory string) []string {
 					if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
 						// Extract title from filename (remove .md extension)
 						title := strings.TrimSuffix(file.Name(), ".md")
-						fmt.Printf("  发现文章: %s (标题: %s)\n", file.Name(), title)
+						// fmt.Printf("  发现文章: %s (标题: %s)\n", file.Name(), title)
 						posts = append(posts, title)
-						fmt.Printf("    -> 添加到列表\n")
+						// fmt.Printf("    -> 添加到列表\n")
 					}
 				}
 			}
@@ -321,13 +343,13 @@ func (a *App) ListPostsSimple(directory string) []string {
 			// Also check for markdown files directly in the directory (not in date folders)
 			// Extract title from filename (remove .md extension)
 			title := strings.TrimSuffix(entry.Name(), ".md")
-			fmt.Printf("发现直接文件: %s (标题: %s)\n", entry.Name(), title)
+			// fmt.Printf("发现直接文件: %s (标题: %s)\n", entry.Name(), title)
 			posts = append(posts, title)
-			fmt.Printf("  -> 添加到列表\n")
+			// fmt.Printf("  -> 添加到列表\n")
 		}
 	}
 
-	fmt.Printf("总共找到 %d 篇文章\n", len(posts))
+	// fmt.Printf("总共找到 %d 篇文章\n", len(posts))
 	return posts
 }
 
@@ -534,7 +556,19 @@ func extractImagePaths(content, imageDirectory, rootDirectory string) []string {
 				// Remove quotes if present
 				path = strings.Trim(path, "\"'")
 				if path != "" {
-					imagePaths = append(imagePaths, path)
+					// Check if it's a relative path starting with /images/uploads/
+					if strings.HasPrefix(path, "/images/uploads/") {
+						// Convert to absolute path for deletion
+						if imageDirectory != "" {
+							// Extract filename from path
+							filename := filepath.Base(path)
+							// Construct absolute path
+							absolutePath := filepath.Join(imageDirectory, filename)
+							imagePaths = append(imagePaths, absolutePath)
+						}
+					} else {
+						imagePaths = append(imagePaths, path)
+					}
 				}
 			}
 		}
@@ -657,7 +691,13 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 	}
 
 	// Write the markdown file
-	return os.WriteFile(fullPath, []byte(frontMatter), 0644)
+	if err := os.WriteFile(fullPath, []byte(frontMatter), 0644); err != nil {
+		return err
+	}
+
+	// 确保文件写入完成后再返回
+	time.Sleep(100 * time.Millisecond)
+	return nil
 }
 
 // createSafeFilename creates a safe filename from a title

@@ -174,10 +174,13 @@ function App() {
             // 调用新的分页和搜索方法（空搜索字符串表示不搜索）
             const result = await ListPosts(saveDirectory, rootDirectory, page, pageSize, "");
                         
-                                    const postList = result.posts || [];
-                                    const totalCount = result.totalCount || 0;                        setPosts(postList);
-                        setTotalPosts(totalCount);
-                        setCurrentPage(page);        } catch (error) {
+            const postList = result.posts || [];
+            const totalCount = result.totalCount || 0;
+            
+            setPosts(postList);
+            setTotalPosts(totalCount);
+            setCurrentPage(page);
+        } catch (error) {
             console.error('Failed to load posts:', error);
             // 即使出错也设置一些默认值，确保UI能正常显示
             setPosts([]);
@@ -344,24 +347,8 @@ function App() {
                 // Compress and save the image
                 await SaveAndCompressImage(base64Data, coverImage.name, imageSavePath);
                 
-                // Convert image path to URL path for front matter if root directory is set
-                if (rootDirectory && imageSavePath.startsWith(rootDirectory)) {
-                    // Remove root directory prefix and convert to URL format
-                    coverImagePath = imageSavePath.substring(rootDirectory.length).replace(/\\/g, '/');
-                    // Ensure path starts with '/'
-                    if (!coverImagePath.startsWith('/')) {
-                        coverImagePath = '/' + coverImagePath;
-                    }
-                    // Remove /static prefix if present
-                    if (coverImagePath.startsWith('/static/')) {
-                        coverImagePath = coverImagePath.substring(7); // Remove '/static' (7 characters)
-                    } else if (coverImagePath.startsWith('/static')) {
-                        coverImagePath = coverImagePath.substring(7); // Remove '/static' (7 characters)
-                    }
-                } else {
-                    // If no root directory is set, use the full path converted to URL format
-                    coverImagePath = imageSavePath.replace(/\\/g, '/');
-                }
+                // Convert image path to URL path for front matter - 使用固定的/images/uploads/路径格式
+                coverImagePath = `/images/uploads/${imageName}`;
             }
 
             // Parse tags from comma-separated string to array
@@ -383,8 +370,10 @@ function App() {
             // Clear form
             clearForm();
             
-            // 重新加载文章列表
-            loadPosts();
+            // 延迟一段时间后再刷新列表，确保文件已写入完成
+            setTimeout(() => {
+                loadPosts();
+            }, 500);
         } catch (error) {
             console.error('Failed to publish/update post:', error);
             alert((isEditMode ? '更新' : '发布') + '失败：' + (error.message || error));
@@ -411,56 +400,63 @@ function App() {
     };
 
     // 处理编辑器中的图片上传
-    const handleImageUpload = useCallback(async (file, callback) => {
-        if (!imageDirectory) {
-            alert('请先选择图片保存目录');
-            return false;
+    const handleImageUpload = useCallback(async (file) => {
+        const performUpload = async (uploadDirectory) => {
+            try {
+                // Generate a unique filename for the image
+                const timestamp = new Date().getTime();
+                const imageName = `editor-${timestamp}${getFileExtension(file.name)}`;
+                const imagePath = `${uploadDirectory}/${imageName}`;
+                
+                // Read the file as base64 string
+                const base64Data = await readFileAsBase64(file);
+                
+                // Compress and save the image
+                await SaveAndCompressImage(base64Data, file.name, imagePath);
+                
+                // Convert image path to URL path - 使用固定的/images/uploads/路径格式
+                let imageUrl = `/images/uploads/${imageName}`;
+                
+                // 返回图片URL
+                return imageUrl;
+            } catch (error) {
+                console.error('Failed to upload image:', error);
+                alert('图片上传失败：' + (error.message || error));
+                throw error;
+            }
+        };
+
+        if (imageDirectory && imageDirectory.trim() !== '') {
+            return await performUpload(imageDirectory);
         }
 
         try {
-            // Generate a unique filename for the image
-            const timestamp = new Date().getTime();
-            const imageName = `editor-${timestamp}${getFileExtension(file.name)}`;
-            const imagePath = `${imageDirectory}/${imageName}`;
-            
-            // Read the file as base64 string
-            const base64Data = await readFileAsBase64(file);
-            
-            // Compress and save the image
-            await SaveAndCompressImage(base64Data, file.name, imagePath);
-            
-            // Convert image path to URL path if root directory is set
-            let imageUrl = imagePath;
-            if (rootDirectory && imagePath.startsWith(rootDirectory)) {
-                // Remove root directory prefix and convert to URL format
-                imageUrl = imagePath.substring(rootDirectory.length).replace(/\\/g, '/');
-                // Ensure path starts with '/'
-                if (!imageUrl.startsWith('/')) {
-                    imageUrl = '/' + imageUrl;
+            const directory = await SelectImageDirectory();
+            if (directory && directory.trim() !== '') {
+                setImageDirectory(directory);
+                // 保存到localStorage
+                try {
+                    const savedSettings = localStorage.getItem('hugoPublisherSettings');
+                    let settings = { autoSaveDirectories: true };
+                    if (savedSettings) {
+                        settings = JSON.parse(savedSettings);
+                    }
+                    settings.imageDirectory = directory;
+                    localStorage.setItem('hugoPublisherSettings', JSON.stringify(settings));
+                } catch (e) {
+                    console.error('保存目录设置到localStorage失败:', e);
                 }
-                // Remove /static prefix if present
-                if (imageUrl.startsWith('/static/')) {
-                    imageUrl = imageUrl.substring(7); // Remove '/static' (7 characters)
-                } else if (imageUrl.startsWith('/static')) {
-                    imageUrl = imageUrl.substring(7); // Remove '/static' (7 characters)
-                }
+                return await performUpload(directory);
             } else {
-                // If no root directory is set, use the full path converted to URL format
-                imageUrl = imagePath.replace(/\\/g, '/');
+                alert('未选择图片保存目录');
+                throw new Error('未选择图片保存目录');
             }
-            
-            // 调用回调函数，插入图片到编辑器
-            callback({
-                url: imageUrl
-            });
-            
-            return true;
         } catch (error) {
-            console.error('Failed to upload image:', error);
-            alert('图片上传失败：' + (error.message || error));
-            return false;
+            console.error('选择图片目录失败:', error);
+            alert('选择图片保存目录失败: ' + (error.message || error));
+            throw error;
         }
-    }, [imageDirectory, rootDirectory]);
+    }, [imageDirectory, setImageDirectory]);
 
     // 清空输入框的函数
     const clearInput = (setter) => () => setter('');
@@ -692,9 +688,6 @@ function App() {
                                                 ) : (
                                                     <div>
                                                         暂无文章
-                                                        <div className="text-xs mt-2">
-                                                            调试: posts.length={posts.length}, totalPosts={totalPosts}
-                                                        </div>
                                                     </div>
                                                 )}
                                             </div>

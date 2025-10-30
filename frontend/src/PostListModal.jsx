@@ -17,12 +17,9 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
         setLoadingPosts(true);
         try {
             // 调用后端方法获取文章列表，包含分页和搜索参数
-            console.log('正在加载文章列表，目录:', saveDirectory, '页码:', page, '页面大小:', pageSize, '搜索:', search);
             const result = await ListPosts(saveDirectory, page, pageSize, search);
-            console.log('后端返回结果:', result);
             const [postList, totalCount] = result;
 
-            console.log('解析后的文章列表:', postList, '总数量:', totalCount);
             setPosts(postList);
             setTotalPosts(totalCount);
             setCurrentPage(page);
@@ -96,7 +93,7 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 {/* 头部 */}
                 <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
-                    <h2 className="text-xl font-bold text-gray-800 dark:text-white">文章列表</h2>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">文章列表</h3>
                     <button 
                         onClick={onClose}
                         className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -105,7 +102,7 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
                     </button>
                 </div>
                 
-                {/* 搜索栏 */}
+                {/* 搜索框 */}
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                     <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -116,16 +113,16 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
                             value={searchTerm}
                             onChange={(e) => handleSearch(e.target.value)}
                             placeholder="搜索文章标题..."
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:placeholder-gray-400 dark:focus:placeholder-gray-300 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-500 dark:focus:border-blue-500 sm:text-sm text-gray-900 dark:text-white"
                         />
                     </div>
                 </div>
                 
                 {/* 内容区域 */}
-                <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto">
                     {posts.length > 0 ? (
                         <>
-                            <div className="overflow-y-auto flex-1">
+                            <div className="overflow-x-auto">
                                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                     <thead className="bg-gray-50 dark:bg-gray-700">
                                         <tr>
@@ -151,17 +148,15 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <button
                                                         onClick={() => handleEditPost(post)}
-                                                        className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 mr-3"
+                                                        className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 mr-3"
                                                     >
-                                                        <PencilIcon className="h-4 w-4 inline" />
-                                                        <span className="ml-1">编辑</span>
+                                                        <PencilIcon className="h-4 w-4 inline" /> 编辑
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeletePost(post)}
-                                                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                                        className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                                                     >
-                                                        <TrashIcon className="h-4 w-4 inline" />
-                                                        <span className="ml-1">删除</span>
+                                                        <TrashIcon className="h-4 w-4 inline" /> 删除
                                                     </button>
                                                 </td>
                                             </tr>
