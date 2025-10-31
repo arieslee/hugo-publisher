@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image/jpeg"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +22,14 @@ import (
 // App struct
 type App struct {
 	ctx context.Context
+}
+
+// IndexNowRequest represents the request structure for IndexNow API
+type IndexNowRequest struct {
+	Host        string   `json:"host"`
+	Key         string   `json:"key"`
+	KeyLocation string   `json:"keyLocation"`
+	URLList     []string `json:"urlList"`
 }
 
 type PostInfo struct {
@@ -97,6 +108,64 @@ func (a *App) SaveAndCompressImage(base64Data string, originalFilename, dstPath 
 
 	// Now compress the image from temp file to destination
 	return a.CompressImage(tempFile.Name(), dstPath)
+}
+
+// submitToIndexNow submits a URL to IndexNow API
+func (a *App) submitToIndexNow(postURL string) error {
+	// IndexNow configuration - these should be configured based on your site
+	host := "xiaomizhou.net"
+	key := "f886b7c5b67048d0a0086ea09a39f7b4" // This should be stored securely
+	keyLocation := fmt.Sprintf("https://%s/%s.txt", host, key)
+
+	// Create the request payload
+	requestData := IndexNowRequest{
+		Host:        host,
+		Key:         key,
+		KeyLocation: keyLocation,
+		URLList:     []string{postURL},
+	}
+
+	// Convert to JSON
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal IndexNow request: %v", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", "https://api.indexnow.org/IndexNow", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create IndexNow request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Host", "api.indexnow.org")
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Send request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send IndexNow request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read IndexNow response: %v", err)
+	}
+
+	// Check status code
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		fmt.Printf("Successfully submitted to IndexNow. Response: %s\n", string(body))
+		return nil
+	}
+
+	return fmt.Errorf("IndexNow submission failed with status %d: %s", resp.StatusCode, string(body))
 }
 
 // parsePostInfo is a simplified parser for post front matter
@@ -697,6 +766,18 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 
 	// 确保文件写入完成后再返回
 	time.Sleep(100 * time.Millisecond)
+
+	// Submit to IndexNow after successful post creation
+	go func() {
+		// Add a small delay to ensure the file is accessible via web server
+		time.Sleep(2 * time.Second)
+
+		// Submit the post URL to IndexNow
+		if err := a.submitToIndexNow(disqusURL); err != nil {
+			fmt.Printf("Warning: Failed to submit to IndexNow: %v\n", err)
+		}
+	}()
+
 	return nil
 }
 

@@ -64,7 +64,9 @@ function App() {
                     
                     if (settings.autoSaveDirectories !== false) {
                         if (settings.saveDirectory) setSaveDirectory(settings.saveDirectory);
-                        if (settings.imageDirectory) setImageDirectory(settings.imageDirectory);
+                        if (settings.imageDirectory) {
+                            setImageDirectory(settings.imageDirectory);
+                        }
                         if (settings.rootDirectory) setRootDirectory(settings.rootDirectory);
                     }
                 }
@@ -136,7 +138,9 @@ function App() {
     const selectImageDirectory = async () => {
         try {
             const directory = await SelectImageDirectory();
-            setImageDirectory(directory);
+            if (directory) {
+                setImageDirectory(directory);
+            }
         } catch (error) {
             console.error('Failed to select image directory:', error);
         }
@@ -426,14 +430,21 @@ function App() {
             }
         };
 
-        if (imageDirectory && imageDirectory.trim() !== '') {
-            return await performUpload(imageDirectory);
+        // 检查imageDirectory是否已设置且有效
+        const trimmedImageDirectory = imageDirectory ? imageDirectory.trim() : '';
+        const isImageDirectoryValid = trimmedImageDirectory.length > 0;
+
+        // 如果已经设置了有效的图片目录，直接使用它
+        if (isImageDirectoryValid) {
+            return await performUpload(trimmedImageDirectory);
         }
 
+        // 如果没有设置图片目录，提示用户选择
         try {
             const directory = await SelectImageDirectory();
-            if (directory && directory.trim() !== '') {
-                setImageDirectory(directory);
+            if (directory && typeof directory === 'string' && directory.trim().length > 0) {
+                const trimmedDirectory = directory.trim();
+                setImageDirectory(trimmedDirectory);
                 // 保存到localStorage
                 try {
                     const savedSettings = localStorage.getItem('hugoPublisherSettings');
@@ -441,12 +452,12 @@ function App() {
                     if (savedSettings) {
                         settings = JSON.parse(savedSettings);
                     }
-                    settings.imageDirectory = directory;
+                    settings.imageDirectory = trimmedDirectory;
                     localStorage.setItem('hugoPublisherSettings', JSON.stringify(settings));
                 } catch (e) {
                     console.error('保存目录设置到localStorage失败:', e);
                 }
-                return await performUpload(directory);
+                return await performUpload(trimmedDirectory);
             } else {
                 alert('未选择图片保存目录');
                 throw new Error('未选择图片保存目录');
