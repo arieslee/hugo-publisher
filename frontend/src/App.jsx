@@ -53,6 +53,8 @@ function App() {
     const [isPostListModalOpen, setIsPostListModalOpen] = useState(false); // 文章列表模态框状态
     const [autoSaveDirectories, setAutoSaveDirectories] = useState(true); // 是否自动保存目录
     const [isCoverHidden, setIsCoverHidden] = useState(true); // 封面是否在列表中隐藏
+    const [slug, setSlug] = useState(''); // 自定义URL
+    const [keywords, setKeywords] = useState(''); // 关键词
     
     // 应用启动时加载保存的目录
     useEffect(() => {
@@ -236,6 +238,8 @@ function App() {
             setAuthor(parsedData.author || 'Aries');
             setTags(parsedData.tags || '');
             setWeight(parsedData.weight || 1);
+            setSlug(parsedData.slug || '');
+            setKeywords(parsedData.keywords || '');
             
             // Enter edit mode
             setIsEditMode(true);
@@ -247,7 +251,7 @@ function App() {
     };
 
     // 解析 Markdown 内容，分离 front matter 和正文
-    const parseMarkdownContent = (markdown) => {
+    const parseMarkdownContent = (metadata) => {
         const result = {
             title: '',
             description: '',
@@ -258,11 +262,11 @@ function App() {
         };
 
         // Check if content has front matter
-        if (markdown.startsWith('---')) {
-            const frontMatterEnd = markdown.indexOf('---', 3);
+        if (metadata.startsWith('---')) {
+            const frontMatterEnd = metadata.indexOf('---', 3);
             if (frontMatterEnd !== -1) {
-                const frontMatter = markdown.substring(3, frontMatterEnd);
-                result.content = markdown.substring(frontMatterEnd + 3).trim();
+                const frontMatter = metadata.substring(3, frontMatterEnd);
+                result.content = metadata.substring(frontMatterEnd + 3).trim();
                 
                 // Parse front matter lines
                 const lines = frontMatter.split('\n');
@@ -285,11 +289,26 @@ function App() {
                         }
                     } else if (trimmedLine.startsWith('weight:')) {
                         result.weight = parseInt(trimmedLine.substring(7).trim()) || 1;
+                    } else if (trimmedLine.startsWith('slug:')) {
+                        result.slug = trimmedLine.substring(5).trim().replace(/"/g, '');
+                    } else if (trimmedLine.startsWith('keywords:')) {
+                        // 处理关键词数组
+                        const keywordLines = lines.slice(lines.indexOf(line) + 1);
+                        const keywordArray = [];
+                        for (const keywordLine of keywordLines) {
+                            const keywordTrimmed = keywordLine.trim();
+                            if (keywordTrimmed.startsWith('-')) {
+                                keywordArray.push(keywordTrimmed.substring(1).trim().replace(/"/g, ''));
+                            } else if (keywordTrimmed !== '') {
+                                break;
+                            }
+                        }
+                        result.keywords = keywordArray.join(', ');
                     }
                 }
             }
         } else {
-            result.content = markdown;
+            result.content = metadata;
         }
 
         return result;
@@ -360,16 +379,44 @@ function App() {
             // Parse tags from comma-separated string to array
             const tagsArray = tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
 
+            // 确保所有参数都不是 undefined 或 null
+            const safeTitle = title || '';
+            const safeContent = content || '';
+            const safeDescription = description || '';
+            const safeAuthor = author || 'Aries';
+            const safeCoverImagePath = coverImagePath || '';
+            const safeSaveDirectory = saveDirectory || '';
+            const safeTagsArray = tagsArray || [];
+            const safeWeight = parseInt(weight) || 1;
+            const safeSlug = slug || '';
+            const safeKeywords = keywords || '';
+            const safeIsCoverHidden = isCoverHidden !== undefined ? isCoverHidden : true;
+
+            // 添加调试信息
+            console.log('Publishing post with parameters:', {
+                title: safeTitle,
+                content: safeContent.substring(0, 50) + '...',
+                description: safeDescription,
+                author: safeAuthor,
+                coverImagePath: safeCoverImagePath,
+                saveDirectory: safeSaveDirectory,
+                tagsArray: safeTagsArray,
+                weight: safeWeight,
+                slug: safeSlug,
+                keywords: safeKeywords,
+                isCoverHidden: safeIsCoverHidden
+            });
+
             if (isEditMode) {
                 // Update existing post
-                await UpdatePost(originalTitle, title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight), isCoverHidden);
+                await UpdatePost(originalTitle, safeTitle, safeContent, safeDescription, safeAuthor, safeCoverImagePath, safeSaveDirectory, safeTagsArray, safeWeight, safeSlug, safeKeywords, safeIsCoverHidden);
                 alert('文章更新成功！');
                 // Exit edit mode
                 setIsEditMode(false);
                 setOriginalTitle('');
             } else {
                 // Save new post
-                await SavePost(title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight), isCoverHidden);
+                await SavePost(safeTitle, safeContent, safeDescription, safeAuthor, safeCoverImagePath, safeSaveDirectory, safeTagsArray, safeWeight, safeSlug, safeKeywords, safeIsCoverHidden);
                 alert('文章发布成功！');
             }
             
@@ -484,6 +531,8 @@ function App() {
         setContent('');
         setCoverImage(null);
         setIsCoverHidden(true); // 重置封面显示选项为隐藏
+        setSlug(''); // 重置自定义URL
+        setKeywords(''); // 重置关键词
         // 不清空目录选择，以便连续操作
     };
 
@@ -877,6 +926,50 @@ function App() {
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                                <div className="w-full">
+                                    <div className="flex-1 min-w-0">
+                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">自定义URL (可选)</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={slug}
+                                                onChange={(e) => setSlug(e.target.value)}
+                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                placeholder="请输入自定义URL，留空则使用标题生成"
+                                            />
+                                            {slug && (
+                                                <button 
+                                                    onClick={() => setSlug('')}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                >
+                                                    <XMarkIcon className="h-5 w-5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-full">
+                                    <div className="flex-1 min-w-0">
+                                        <label className="font-medium text-gray-600 dark:text-gray-400 text-sm mb-1 block">关键词 (逗号分隔)</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={keywords}
+                                                onChange={(e) => setKeywords(e.target.value)}
+                                                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                                                placeholder="例如: AI, 技术, 教程"
+                                            />
+                                            {keywords && (
+                                                <button 
+                                                    onClick={() => setKeywords('')}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                                >
+                                                    <XMarkIcon className="h-5 w-5" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
