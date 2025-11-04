@@ -52,6 +52,7 @@ function App() {
     const [pageSize] = useState(5); // 每页显示的文章数
     const [isPostListModalOpen, setIsPostListModalOpen] = useState(false); // 文章列表模态框状态
     const [autoSaveDirectories, setAutoSaveDirectories] = useState(true); // 是否自动保存目录
+    const [isCoverHidden, setIsCoverHidden] = useState(true); // 封面是否在列表中隐藏
     
     // 应用启动时加载保存的目录
     useEffect(() => {
@@ -265,6 +266,7 @@ function App() {
                 
                 // Parse front matter lines
                 const lines = frontMatter.split('\n');
+                
                 for (const line of lines) {
                     const trimmedLine = line.trim();
                     if (trimmedLine.startsWith('title:')) {
@@ -360,14 +362,14 @@ function App() {
 
             if (isEditMode) {
                 // Update existing post
-                await UpdatePost(originalTitle, title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight));
+                await UpdatePost(originalTitle, title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight), isCoverHidden);
                 alert('文章更新成功！');
                 // Exit edit mode
                 setIsEditMode(false);
                 setOriginalTitle('');
             } else {
                 // Save new post
-                await SavePost(title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight));
+                await SavePost(title, content, description, author, coverImagePath, saveDirectory, tagsArray, parseInt(weight), isCoverHidden);
                 alert('文章发布成功！');
             }
             
@@ -481,6 +483,7 @@ function App() {
         setWeight(1);
         setContent('');
         setCoverImage(null);
+        setIsCoverHidden(true); // 重置封面显示选项为隐藏
         // 不清空目录选择，以便连续操作
     };
 
@@ -835,7 +838,22 @@ function App() {
                                                     className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-gray-700 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-gray-600"
                                                 />
                                             </div>
-                                
+                                            
+                                            {/* 封面显示选项 */}
+                                            {coverImage && (
+                                                <div className="w-full sm:w-1/2 flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="hideCoverInList"
+                                                        checked={isCoverHidden}
+                                                        onChange={(e) => setIsCoverHidden(e.target.checked)}
+                                                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                                    />
+                                                    <label htmlFor="hideCoverInList" className="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
+                                                        在列表中隐藏封面
+                                                    </label>
+                                                </div>
+                                            )}
                                         </div>
                                         {/* 封面图片预览 */}
                                         {coverImage && (

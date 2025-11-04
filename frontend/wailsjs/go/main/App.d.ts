@@ -18,10 +18,10 @@ export function LoadPost(arg1:string,arg2:string):Promise<string>;
 
 export function SaveAndCompressImage(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function SavePost(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<string>,arg8:number):Promise<void>;
+export function SavePost(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<string>,arg8:number,arg9:string,arg10:string,arg11:boolean):Promise<void>;
 
 export function SelectDirectory():Promise<string>;
 
 export function SelectImageDirectory():Promise<string>;
 
-export function UpdatePost(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:Array<string>,arg9:number):Promise<void>;
+export function UpdatePost(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:Array<string>,arg9:number,arg10:string,arg11:string,arg12:boolean):Promise<void>;

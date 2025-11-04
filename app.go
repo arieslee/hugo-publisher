@@ -33,9 +33,12 @@ type IndexNowRequest struct {
 }
 
 type PostInfo struct {
-	Title            string `json:"title"`
-	CoverImage       string `json:"coverImage"`
-	CoverImageBase64 string `json:"coverImageBase64"`
+	Title            string   `json:"title"`
+	CoverImage       string   `json:"coverImage"`
+	CoverImageBase64 string   `json:"coverImageBase64"`
+	Slug             string   `json:"slug"`         // 添加slug字段
+	Keywords         []string `json:"keywords"`     // 添加关键词字段
+	HiddenInList     bool     `json:"hiddenInList"` // 添加封面显示选项字段
 }
 
 type ListPostsResult struct {
@@ -173,7 +176,7 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 	// Default title from filename
 	base := filepath.Base(filePath)
 	title := strings.TrimSuffix(base, ".md")
-	info := PostInfo{Title: title, CoverImage: ""}
+	info := PostInfo{Title: title, CoverImage: "", Slug: "", Keywords: []string{}, HiddenInList: true}
 
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
@@ -194,6 +197,7 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 	frontMatter := parts[1]
 	lines := strings.Split(frontMatter, "\n")
 	inCoverBlock := false
+	inKeywordsBlock := false
 
 	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
@@ -207,6 +211,32 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 			continue
 		}
 
+		if strings.HasPrefix(trimmedLine, "slug:") {
+			slugParts := strings.SplitN(line, ":", 2)
+			if len(slugParts) == 2 {
+				// Trim quotes and spaces
+				info.Slug = strings.Trim(strings.TrimSpace(slugParts[1]), "\"")
+			}
+			continue
+		}
+
+		if strings.HasPrefix(trimmedLine, "keywords:") {
+			inKeywordsBlock = true
+			continue
+		}
+
+		if inKeywordsBlock {
+			if strings.HasPrefix(trimmedLine, "-") {
+				// Extract keyword value
+				keyword := strings.TrimSpace(strings.TrimPrefix(trimmedLine, "-"))
+				keyword = strings.Trim(keyword, "\"")
+				info.Keywords = append(info.Keywords, keyword)
+			} else if trimmedLine != "" && !strings.HasPrefix(trimmedLine, " ") {
+				// End of keywords block
+				inKeywordsBlock = false
+			}
+		}
+
 		if strings.HasPrefix(trimmedLine, "cover:") {
 			inCoverBlock = true
 			continue
@@ -217,7 +247,17 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 			if len(imageParts) == 2 {
 				info.CoverImage = strings.TrimSpace(imageParts[1])
 			}
-			inCoverBlock = false
+			continue
+		}
+
+		if inCoverBlock && strings.HasPrefix(trimmedLine, "hiddenInList:") {
+			hiddenParts := strings.SplitN(line, ":", 2)
+			if len(hiddenParts) == 2 {
+				// Parse boolean value
+				hiddenValue := strings.TrimSpace(hiddenParts[1])
+				info.HiddenInList = strings.ToLower(hiddenValue) == "true"
+			}
+			continue
 		}
 
 		if inCoverBlock && !strings.HasPrefix(line, " ") {
@@ -595,14 +635,14 @@ func (a *App) DeletePost(title, directory, imageDirectory, rootDirectory string)
 }
 
 // UpdatePost updates an existing post
-func (a *App) UpdatePost(oldTitle, newTitle, content, description, author, coverImagePath, directory string, tags []string, weight int) error {
+func (a *App) UpdatePost(oldTitle, newTitle, content, description, author, coverImagePath, directory string, tags []string, weight int, slug string, keywords string, isHiddenInList bool) error {
 	// First delete the old post (but preserve images by not passing imageDirectory/rootDirectory)
 	if err := a.DeletePost(oldTitle, directory, "", ""); err != nil {
 		return err
 	}
 
 	// Then save the new post
-	return a.SavePost(newTitle, content, description, author, coverImagePath, directory, tags, weight)
+	return a.SavePost(newTitle, content, description, author, coverImagePath, directory, tags, weight, slug, keywords, isHiddenInList)
 }
 
 // extractImagePaths extracts image paths from markdown content
@@ -692,12 +732,16 @@ func isValidDatePath(dirName string) bool {
 }
 
 // SavePost saves a post as a markdown file
-func (a *App) SavePost(title, content, description, author, coverImagePath, directory string, tags []string, weight int) error {
+func (a *App) SavePost(title, content, description, author, coverImagePath, directory string, tags []string, weight int, slug string, keywords string, isHiddenInList bool) error {
 	// Get current date for directory
 	currentDate := time.Now().Format("2006-01-02")
 
-	// Create a safe filename based on title only
+	// Create a safe filename based on title or slug
 	safeTitle := createSafeFilename(title)
+	if slug != "" {
+		// 如果提供了自定义slug，则使用它作为文件名
+		safeTitle = createSafeFilename(slug)
+	}
 
 	// 创建基于日期的目录路径
 	dateDirectory := filepath.Join(directory, currentDate)
@@ -743,16 +787,47 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 	coverFormatted := ""
 	if coverImagePath != "" {
 		escapedCoverImagePath := escapeString(coverImagePath)
-		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: true\n", escapedCoverImagePath)
+		// 根据用户选择设置 hiddenInList 值
+		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: %t\n", escapedCoverImagePath, isHiddenInList)
 	}
 
 	// Create disqus parameters
 	disqusIdentifier := safeTitle
 	disqusURL := fmt.Sprintf("https://xiaomizhou.net/%s/%s/", currentDate, safeTitle) // 需要替换为实际域名
 
+	// 如果提供了自定义slug，则使用它生成URL
+	if slug != "" {
+		disqusURL = fmt.Sprintf("https://xiaomizhou.net/%s/%s/", currentDate, createSafeFilename(slug))
+	}
+
+	// Format keywords as YAML array (处理逗号分隔的关键词)
+	keywordsFormatted := ""
+	if keywords != "" {
+		// Split keywords by comma and trim spaces
+		keywordList := strings.Split(keywords, ",")
+		keywordsFormatted = "keywords:\n"
+		for _, keyword := range keywordList {
+			trimmedKeyword := strings.TrimSpace(keyword)
+			if trimmedKeyword != "" {
+				escapedKeyword := escapeString(trimmedKeyword)
+				keywordsFormatted += fmt.Sprintf("    - \"%s\"\n", escapedKeyword)
+			}
+		}
+	}
+
+	// Get current time for lastmod
+	lastmod := time.Now().Format("2006-01-02T15:04:05-07:00")
+
 	// Create the markdown content with enhanced front matter
-	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndisqus_identifier: \"%s\"\ndisqus_url: \"%s\"\ndate: %s\ndescription: \"%s\"\n%s%s%sweight: %d\n---\n\n%s",
-		escapedTitle, disqusIdentifier, disqusURL, currentDate, escapedDescription, tagsFormatted, authorFormatted, coverFormatted, weight, content)
+	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndisqus_identifier: \"%s\"\ndisqus_url: \"%s\"\ndate: %s\nlastmod: %s\ndescription: \"%s\"\n%s%s%s%sweight: %d\n",
+		escapedTitle, disqusIdentifier, disqusURL, currentDate, lastmod, escapedDescription, tagsFormatted, authorFormatted, coverFormatted, keywordsFormatted, weight)
+
+	// 如果提供了自定义slug，则添加到front matter中
+	if slug != "" {
+		frontMatter += fmt.Sprintf("slug: \"%s\"\n", createSafeFilename(slug))
+	}
+
+	frontMatter += fmt.Sprintf("---\n\n%s", content)
 
 	// Create the date directory if it doesn't exist
 	if err := os.MkdirAll(dateDirectory, 0755); err != nil {

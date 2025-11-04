@@ -4,6 +4,9 @@ export namespace main {
 	    title: string;
 	    coverImage: string;
 	    coverImageBase64: string;
+	    slug: string;
+	    keywords: string[];
+	    hiddenInList: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PostInfo(source);
@@ -14,6 +17,9 @@ export namespace main {
 	        this.title = source["title"];
 	        this.coverImage = source["coverImage"];
 	        this.coverImageBase64 = source["coverImageBase64"];
+	        this.slug = source["slug"];
+	        this.keywords = source["keywords"];
+	        this.hiddenInList = source["hiddenInList"];
 	    }
 	}
 	export class ListPostsResult {

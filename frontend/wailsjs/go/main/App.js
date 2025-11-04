@@ -34,8 +34,8 @@ export function SaveAndCompressImage(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveAndCompressImage'](arg1, arg2, arg3);
 }
 
-export function SavePost(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['SavePost'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function SavePost(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['SavePost'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
 export function SelectDirectory() {
@@ -46,6 +46,6 @@ export function SelectImageDirectory() {
   return window['go']['main']['App']['SelectImageDirectory']();
 }
 
-export function UpdatePost(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
-  return window['go']['main']['App']['UpdatePost'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+export function UpdatePost(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) {
+  return window['go']['main']['App']['UpdatePost'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12);
 }
