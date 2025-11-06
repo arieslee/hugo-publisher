@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -39,6 +40,8 @@ type PostInfo struct {
 	Slug             string   `json:"slug"`         // 添加slug字段
 	Keywords         []string `json:"keywords"`     // 添加关键词字段
 	HiddenInList     bool     `json:"hiddenInList"` // 添加封面显示选项字段
+	Date             string   `json:"date"`         // 发布日期
+	LastMod          string   `json:"lastmod"`      // 最后修改日期
 }
 
 type ListPostsResult struct {
@@ -176,7 +179,7 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 	// Default title from filename
 	base := filepath.Base(filePath)
 	title := strings.TrimSuffix(base, ".md")
-	info := PostInfo{Title: title, CoverImage: "", Slug: "", Keywords: []string{}, HiddenInList: true}
+	info := PostInfo{Title: title, CoverImage: "", Slug: "", Keywords: []string{}, HiddenInList: true, Date: "", LastMod: ""}
 
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
@@ -207,6 +210,24 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 			if len(titleParts) == 2 {
 				// Trim quotes and spaces
 				info.Title = strings.Trim(strings.TrimSpace(titleParts[1]), "\"")
+			}
+			continue
+		}
+
+		if strings.HasPrefix(trimmedLine, "date:") {
+			// Parse date
+			dateParts := strings.SplitN(line, ":", 2)
+			if len(dateParts) == 2 {
+				info.Date = strings.TrimSpace(dateParts[1])
+			}
+			continue
+		}
+
+		if strings.HasPrefix(trimmedLine, "lastmod:") {
+			// Parse lastmod
+			lastmodParts := strings.SplitN(line, ":", 2)
+			if len(lastmodParts) == 2 {
+				info.LastMod = strings.TrimSpace(lastmodParts[1])
 			}
 			continue
 		}
@@ -295,7 +316,7 @@ func parsePostInfo(filePath, rootDirectory string) PostInfo {
 
 // ListPosts lists all posts in the directory with pagination and search support
 func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, search string) (ListPostsResult, error) {
-	// fmt.Printf("ListPosts called with directory: %s, rootDirectory: %s, page: %d, pageSize: %d, search: %s\n", directory, rootDirectory, page, pageSize, search)
+	// fmt.Printf("ListPosts called with directory: %s, rootDirectory: %s, page: %d, pageSize: %d, search: '%s'\n", directory, rootDirectory, page, pageSize, search)
 
 	var allPosts []PostInfo
 
@@ -311,6 +332,10 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 	}
 
 	// fmt.Printf("目录中有 %d 个条目\n", len(entries))
+
+	// Prepare search term - convert to lowercase for case-insensitive search
+	searchTerm := strings.ToLower(strings.TrimSpace(search))
+	// fmt.Printf("处理搜索词: '%s'\n", searchTerm)
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -333,16 +358,79 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 						if info.Title == "_index" {
 							continue
 						}
-						if search != "" {
+						if searchTerm != "" {
+							// Search in title, slug, and keywords
 							lowerTitle := strings.ToLower(info.Title)
-							lowerSearch := strings.ToLower(search)
-							if strings.Contains(lowerTitle, lowerSearch) {
+							lowerSlug := strings.ToLower(info.Slug)
+
+							// fmt.Printf("检查文章: 标题='%s', 转换后='%s', 搜索词='%s'\n", info.Title, lowerTitle, searchTerm)
+
+							// Check if search term matches title, slug, or any keyword
+							matches := false
+
+							// 检查标题匹配（支持部分匹配）
+							if strings.Contains(lowerTitle, searchTerm) {
+								matches = true
+								// fmt.Printf("标题匹配成功: '%s' 包含 '%s'\n", lowerTitle, searchTerm)
+							}
+
+							// 检查slug匹配（支持部分匹配）
+							if !matches && strings.Contains(lowerSlug, searchTerm) {
+								matches = true
+								// fmt.Printf("Slug匹配成功: '%s' 包含 '%s'\n", lowerSlug, searchTerm)
+							}
+
+							// 检查关键词匹配（支持部分匹配）
+							if !matches {
+								for _, keyword := range info.Keywords {
+									lowerKeyword := strings.ToLower(keyword)
+									if strings.Contains(lowerKeyword, searchTerm) {
+										matches = true
+										// fmt.Printf("关键词匹配成功: '%s' 包含 '%s'\n", lowerKeyword, searchTerm)
+										break
+									}
+								}
+							}
+
+							// 如果还是没有匹配，尝试分词匹配
+							if !matches && len(searchTerm) > 1 {
+								// 将搜索词按空格分割，进行分词搜索
+								searchTerms := strings.Fields(searchTerm)
+								if len(searchTerms) > 1 {
+									allMatch := true
+									for _, term := range searchTerms {
+										if !strings.Contains(lowerTitle, term) &&
+											!strings.Contains(lowerSlug, term) {
+											// 检查关键词
+											keywordMatch := false
+											for _, keyword := range info.Keywords {
+												if strings.Contains(strings.ToLower(keyword), term) {
+													keywordMatch = true
+													break
+												}
+											}
+											if !keywordMatch {
+												allMatch = false
+												break
+											}
+										}
+									}
+									if allMatch {
+										matches = true
+										// fmt.Printf("分词匹配成功\n")
+									}
+								}
+							}
+
+							if matches {
+								// fmt.Printf("文章 '%s' 匹配搜索条件，添加到列表\n", info.Title)
 								allPosts = append(allPosts, info)
-								// fmt.Printf("  -> 匹配搜索条件，添加到列表\n")
+							} else {
+								// fmt.Printf("文章 '%s' 不匹配搜索条件\n", info.Title)
 							}
 						} else {
 							allPosts = append(allPosts, info)
-							// fmt.Printf("  -> 添加到列表\n")
+							// fmt.Printf("  -> 添加到列表（无搜索条件）\n")
 						}
 					}
 				}
@@ -356,19 +444,111 @@ func (a *App) ListPosts(directory, rootDirectory string, page, pageSize int, sea
 			if info.Title == "_index" {
 				continue
 			}
-			if search != "" {
+			if searchTerm != "" {
+				// Search in title, slug, and keywords
 				lowerTitle := strings.ToLower(info.Title)
-				lowerSearch := strings.ToLower(search)
-				if strings.Contains(lowerTitle, lowerSearch) {
+				lowerSlug := strings.ToLower(info.Slug)
+
+				// fmt.Printf("检查文章: 标题='%s', 转换后='%s', 搜索词='%s'\n", info.Title, lowerTitle, searchTerm)
+
+				// Check if search term matches title, slug, or any keyword
+				matches := false
+
+				// 检查标题匹配（支持部分匹配）
+				if strings.Contains(lowerTitle, searchTerm) {
+					matches = true
+					// fmt.Printf("标题匹配成功: '%s' 包含 '%s'\n", lowerTitle, searchTerm)
+				}
+
+				// 检查slug匹配（支持部分匹配）
+				if !matches && strings.Contains(lowerSlug, searchTerm) {
+					matches = true
+					// fmt.Printf("Slug匹配成功: '%s' 包含 '%s'\n", lowerSlug, searchTerm)
+				}
+
+				// 检查关键词匹配（支持部分匹配）
+				if !matches {
+					for _, keyword := range info.Keywords {
+						lowerKeyword := strings.ToLower(keyword)
+						if strings.Contains(lowerKeyword, searchTerm) {
+							matches = true
+							// fmt.Printf("关键词匹配成功: '%s' 包含 '%s'\n", lowerKeyword, searchTerm)
+							break
+						}
+					}
+				}
+
+				// 如果还是没有匹配，尝试分词匹配
+				if !matches && len(searchTerm) > 1 {
+					// 将搜索词按空格分割，进行分词搜索
+					searchTerms := strings.Fields(searchTerm)
+					if len(searchTerms) > 1 {
+						allMatch := true
+						for _, term := range searchTerms {
+							if !strings.Contains(lowerTitle, term) &&
+								!strings.Contains(lowerSlug, term) {
+								// 检查关键词
+								keywordMatch := false
+								for _, keyword := range info.Keywords {
+									if strings.Contains(strings.ToLower(keyword), term) {
+										keywordMatch = true
+										break
+									}
+								}
+								if !keywordMatch {
+									allMatch = false
+									break
+								}
+							}
+						}
+						if allMatch {
+							matches = true
+							// fmt.Printf("分词匹配成功\n")
+						}
+					}
+				}
+
+				if matches {
+					// fmt.Printf("文章 '%s' 匹配搜索条件，添加到列表\n", info.Title)
 					allPosts = append(allPosts, info)
-					// fmt.Printf("  -> 匹配搜索条件，添加到列表\n")
+				} else {
+					// fmt.Printf("文章 '%s' 不匹配搜索条件\n", info.Title)
 				}
 			} else {
 				allPosts = append(allPosts, info)
-				// fmt.Printf("  -> 添加到列表\n")
+				// fmt.Printf("  -> 添加到列表（无搜索条件）\n")
 			}
 		}
 	}
+
+	// Sort posts by lastmod (descending) then by date (descending)
+	// If lastmod is not available, use date as fallback
+	sort.Slice(allPosts, func(i, j int) bool {
+		// First try to compare by lastmod
+		if allPosts[i].LastMod != "" && allPosts[j].LastMod != "" {
+			// Parse time strings
+			timeI, errI := time.Parse("2006-01-02T15:04:05-07:00", allPosts[i].LastMod)
+			timeJ, errJ := time.Parse("2006-01-02T15:04:05-07:00", allPosts[j].LastMod)
+
+			if errI == nil && errJ == nil {
+				return timeI.After(timeJ) // Descending order
+			}
+		}
+
+		// If lastmod is not available or parsing failed, compare by date
+		if allPosts[i].Date != "" && allPosts[j].Date != "" {
+			// Parse date strings
+			timeI, errI := time.Parse("2006-01-02", allPosts[i].Date)
+			timeJ, errJ := time.Parse("2006-01-02", allPosts[j].Date)
+
+			if errI == nil && errJ == nil {
+				return timeI.After(timeJ) // Descending order
+			}
+		}
+
+		// If both time fields are missing or invalid, maintain original order
+		return false
+	})
 
 	totalCount := len(allPosts)
 	// fmt.Printf("总共找到 %d 篇文章\n", totalCount)
@@ -464,6 +644,7 @@ func (a *App) ListPostsSimple(directory string) []string {
 
 // LoadPost loads a post's content
 func (a *App) LoadPost(title, directory string) (string, error) {
+	// First try the traditional method (for backward compatibility)
 	// Create a safe filename based on title only
 	safeTitle := strings.ToLower(title)                 // 全部转换为小写
 	safeTitle = strings.ReplaceAll(safeTitle, " ", "-") // 空格替换为连字符
@@ -491,7 +672,7 @@ func (a *App) LoadPost(title, directory string) (string, error) {
 	// 创建文件名（不带日期前缀）
 	filename := fmt.Sprintf("%s.md", safeTitle)
 
-	// Check all date directories for the file
+	// Check all date directories for the file using safe title
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return "", err
@@ -515,11 +696,67 @@ func (a *App) LoadPost(title, directory string) (string, error) {
 		}
 	}
 
+	// If not found with safe title, try to find by matching the actual title in front matter
+	// This handles cases where the title contains special characters
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Check if the entry is a date directory (YYYY-MM-DD format)
+			if isValidDatePath(entry.Name()) {
+				// Read files in the date directory
+				dateDirPath := filepath.Join(directory, entry.Name())
+				files, err := os.ReadDir(dateDirPath)
+				if err != nil {
+					continue // Skip this directory if we can't read it
+				}
+
+				// Check each file in the date directory
+				for _, file := range files {
+					if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
+						// Read the file content
+						fullPath := filepath.Join(dateDirPath, file.Name())
+						content, err := os.ReadFile(fullPath)
+						if err != nil {
+							continue
+						}
+
+						// Parse the front matter to get the actual title
+						contentStr := string(content)
+						if strings.HasPrefix(contentStr, "---") {
+							parts := strings.SplitN(contentStr, "---", 3)
+							if len(parts) >= 3 {
+								frontMatter := parts[1]
+								lines := strings.Split(frontMatter, "\n")
+
+								// Look for the title in front matter
+								for _, line := range lines {
+									trimmedLine := strings.TrimSpace(line)
+									if strings.HasPrefix(trimmedLine, "title:") {
+										titleParts := strings.SplitN(line, ":", 2)
+										if len(titleParts) == 2 {
+											// Trim quotes and spaces
+											actualTitle := strings.Trim(strings.TrimSpace(titleParts[1]), "\"")
+											// If the title matches, return the content
+											if actualTitle == title {
+												return contentStr, nil
+											}
+										}
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return "", fmt.Errorf("文章未找到: %s", title)
 }
 
 // DeletePost deletes a post and its associated images
 func (a *App) DeletePost(title, directory, imageDirectory, rootDirectory string) error {
+	// First try the traditional method (for backward compatibility)
 	// Create a safe filename based on title only
 	safeTitle := strings.ToLower(title)                 // 全部转换为小写
 	safeTitle = strings.ReplaceAll(safeTitle, " ", "-") // 空格替换为连字符
@@ -547,7 +784,7 @@ func (a *App) DeletePost(title, directory, imageDirectory, rootDirectory string)
 	// 创建文件名（不带日期前缀）
 	filename := fmt.Sprintf("%s.md", safeTitle)
 
-	// Check all date directories for the file
+	// Check all date directories for the file using safe title
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
@@ -557,6 +794,7 @@ func (a *App) DeletePost(title, directory, imageDirectory, rootDirectory string)
 	var postFilePath string
 	var postDate string
 
+	// First try to find the file using safe title
 	for _, entry := range entries {
 		if entry.IsDir() {
 			// Check if the entry is a date directory (YYYY-MM-DD format)
@@ -569,6 +807,76 @@ func (a *App) DeletePost(title, directory, imageDirectory, rootDirectory string)
 					postFilePath = fullPath
 					postDate = entry.Name()
 					break
+				}
+			}
+		}
+	}
+
+	// If not found with safe title, try to find by matching the actual title in front matter
+	// This handles cases where the title contains special characters
+	if !fileFound {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				// Check if the entry is a date directory (YYYY-MM-DD format)
+				if isValidDatePath(entry.Name()) {
+					// Read files in the date directory
+					dateDirPath := filepath.Join(directory, entry.Name())
+					files, err := os.ReadDir(dateDirPath)
+					if err != nil {
+						continue // Skip this directory if we can't read it
+					}
+
+					// Check each file in the date directory
+					for _, file := range files {
+						if !file.IsDir() && filepath.Ext(file.Name()) == ".md" {
+							// Read the file content
+							fullPath := filepath.Join(dateDirPath, file.Name())
+							content, err := os.ReadFile(fullPath)
+							if err != nil {
+								continue
+							}
+
+							// Parse the front matter to get the actual title
+							contentStr := string(content)
+							if strings.HasPrefix(contentStr, "---") {
+								parts := strings.SplitN(contentStr, "---", 3)
+								if len(parts) >= 3 {
+									frontMatter := parts[1]
+									lines := strings.Split(frontMatter, "\n")
+
+									// Look for the title in front matter
+									for _, line := range lines {
+										trimmedLine := strings.TrimSpace(line)
+										if strings.HasPrefix(trimmedLine, "title:") {
+											titleParts := strings.SplitN(line, ":", 2)
+											if len(titleParts) == 2 {
+												// Trim quotes and spaces
+												actualTitle := strings.Trim(strings.TrimSpace(titleParts[1]), "\"")
+												// If the title matches, we found the file to delete
+												if actualTitle == title {
+													fileFound = true
+													postFilePath = fullPath
+													postDate = entry.Name()
+													break
+												}
+											}
+											break
+										}
+									}
+								}
+							}
+
+							// If we found the file, no need to check other files
+							if fileFound {
+								break
+							}
+						}
+					}
+
+					// If we found the file, no need to check other directories
+					if fileFound {
+						break
+					}
 				}
 			}
 		}
@@ -758,10 +1066,14 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 		weight = 1
 	}
 
-	// 转义特殊字符
-	escapedTitle := escapeString(title)
-	escapedDescription := escapeString(description)
-	escapedAuthor := escapeString(author)
+	// Format title - always use quoted format for consistency
+	titleFormatted := fmt.Sprintf("title: \"%s\"\n", escapeString(title))
+
+	// Format description - always use quoted format for consistency
+	descriptionFormatted := fmt.Sprintf("description: \"%s\"\n", escapeString(description))
+
+	// Format author as YAML array
+	authorFormatted := fmt.Sprintf("author: [\"%s\"]\n", escapeString(author))
 
 	// Format tags as YAML array
 	tagsFormatted := ""
@@ -771,28 +1083,19 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 			if i > 0 {
 				tagsFormatted += ", "
 			}
-			escapedTag := escapeString(tag)
-			tagsFormatted += fmt.Sprintf("\"%s\"", escapedTag)
+			tagsFormatted += fmt.Sprintf("\"%s\"", escapeString(tag))
 		}
 		tagsFormatted += "]\n"
-	}
-
-	// Format author as YAML array
-	authorFormatted := ""
-	if escapedAuthor != "" {
-		authorFormatted = fmt.Sprintf("author: [\"%s\"]\n", escapedAuthor)
 	}
 
 	// Format cover image if provided
 	coverFormatted := ""
 	if coverImagePath != "" {
-		escapedCoverImagePath := escapeString(coverImagePath)
 		// 根据用户选择设置 hiddenInList 值
-		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: %t\n", escapedCoverImagePath, isHiddenInList)
+		coverFormatted = fmt.Sprintf("cover:\n    image: %s\n    hiddenInList: %t\n", coverImagePath, isHiddenInList)
 	}
 
 	// Create disqus parameters
-	disqusIdentifier := safeTitle
 	disqusURL := fmt.Sprintf("https://xiaomizhou.net/%s/%s/", currentDate, safeTitle) // 需要替换为实际域名
 
 	// 如果提供了自定义slug，则使用它生成URL
@@ -809,8 +1112,7 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 		for _, keyword := range keywordList {
 			trimmedKeyword := strings.TrimSpace(keyword)
 			if trimmedKeyword != "" {
-				escapedKeyword := escapeString(trimmedKeyword)
-				keywordsFormatted += fmt.Sprintf("    - \"%s\"\n", escapedKeyword)
+				keywordsFormatted += fmt.Sprintf("    - \"%s\"\n", escapeString(trimmedKeyword))
 			}
 		}
 	}
@@ -819,12 +1121,12 @@ func (a *App) SavePost(title, content, description, author, coverImagePath, dire
 	lastmod := time.Now().Format("2006-01-02T15:04:05-07:00")
 
 	// Create the markdown content with enhanced front matter
-	frontMatter := fmt.Sprintf("---\ntitle: \"%s\"\ndisqus_identifier: \"%s\"\ndisqus_url: \"%s\"\ndate: %s\nlastmod: %s\ndescription: \"%s\"\n%s%s%s%sweight: %d\n",
-		escapedTitle, disqusIdentifier, disqusURL, currentDate, lastmod, escapedDescription, tagsFormatted, authorFormatted, coverFormatted, keywordsFormatted, weight)
+	frontMatter := fmt.Sprintf("---\n%sdate: %s\nlastmod: %s\n%s%s%s%s%sweight: %d\n",
+		titleFormatted, currentDate, lastmod, descriptionFormatted, tagsFormatted, authorFormatted, coverFormatted, keywordsFormatted, weight)
 
 	// 如果提供了自定义slug，则添加到front matter中
 	if slug != "" {
-		frontMatter += fmt.Sprintf("slug: \"%s\"\n", createSafeFilename(slug))
+		frontMatter += fmt.Sprintf("slug: \"%s\"\n", slug)
 	}
 
 	frontMatter += fmt.Sprintf("---\n\n%s", content)
@@ -909,6 +1211,41 @@ func escapeString(s string) string {
 	// Escape double quotes
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	return s
+}
+
+// LoadImageAsBase64 loads an image file and returns its base64 encoded content
+func (a *App) LoadImageAsBase64(imagePath, rootDirectory string) (string, error) {
+	// If the image path is relative (starts with /), construct the absolute path
+	if strings.HasPrefix(imagePath, "/") && rootDirectory != "" {
+		// Remove leading slash and construct absolute path
+		cleanImagePath := strings.TrimPrefix(imagePath, "/")
+		absPath := filepath.Join(rootDirectory, "static", cleanImagePath)
+
+		// Read image file
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read image file: %v", err)
+		}
+
+		// Encode to Base64
+		base64Data := base64.StdEncoding.EncodeToString(data)
+		return base64Data, nil
+	}
+
+	// If it's already an absolute path or rootDirectory is not set
+	if filepath.IsAbs(imagePath) {
+		// Read image file
+		data, err := os.ReadFile(imagePath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read image file: %v", err)
+		}
+
+		// Encode to Base64
+		base64Data := base64.StdEncoding.EncodeToString(data)
+		return base64Data, nil
+	}
+
+	return "", fmt.Errorf("invalid image path or root directory not set")
 }
 
 // CheckTitleDuplicate checks if a post with the same title already exists in the directory

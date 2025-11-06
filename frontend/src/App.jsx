@@ -3,7 +3,7 @@ import './App.css';
 import MdEditor from 'react-markdown-editor-lite';
 import MarkdownIt from 'markdown-it';
 import 'react-markdown-editor-lite/lib/index.css';
-import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage, CheckTitleDuplicate, DeletePost, UpdatePost, ListPosts, LoadPost } from "../wailsjs/go/main/App";
+import { CompressImage, SavePost, SelectDirectory, SelectImageDirectory, SaveAndCompressImage, CheckTitleDuplicate, DeletePost, UpdatePost, ListPosts, LoadPost, LoadImageAsBase64 } from "../wailsjs/go/main/App";
 import { useTheme } from './ThemeProvider';
 import { SunIcon, MoonIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import PostListModal from './PostListModal';
@@ -37,6 +37,8 @@ function App() {
     const [weight, setWeight] = useState(1);
     const [content, setContent] = useState('');
     const [coverImage, setCoverImage] = useState(null);
+    const [coverImagePath, setCoverImagePath] = useState(''); // 封面图片路径
+    const [coverImageBase64, setCoverImageBase64] = useState(''); // 封面图片base64数据
     const [saveDirectory, setSaveDirectory] = useState('');
     const [imageDirectory, setImageDirectory] = useState('');
     const [rootDirectory, setRootDirectory] = useState('');
@@ -241,6 +243,30 @@ function App() {
             setSlug(parsedData.slug || '');
             setKeywords(parsedData.keywords || '');
             
+            // 设置封面图片相关状态
+            if (parsedData.coverImage) {
+                // 设置封面图片路径状态
+                setCoverImagePath(parsedData.coverImage);
+                // 重置封面图片文件状态（因为我们没有原始文件对象）
+                setCoverImage(null);
+                // 加载封面图片的base64数据用于预览
+                try {
+                    const base64Data = await LoadImageAsBase64(parsedData.coverImage, rootDirectory);
+                    setCoverImageBase64(base64Data);
+                } catch (error) {
+                    console.error('Failed to load cover image:', error);
+                    setCoverImageBase64('');
+                }
+            } else {
+                // 清除封面图片状态
+                setCoverImagePath('');
+                setCoverImage(null);
+                setCoverImageBase64('');
+            }
+            
+            // 设置封面显示选项
+            setIsCoverHidden(parsedData.isCoverHidden !== undefined ? parsedData.isCoverHidden : true);
+            
             // Enter edit mode
             setIsEditMode(true);
             setOriginalTitle(postTitle);
@@ -258,7 +284,11 @@ function App() {
             author: 'Aries',
             tags: '',
             weight: 1,
-            content: ''
+            content: '',
+            slug: '',
+            keywords: '',
+            coverImage: '', // 添加封面图片字段
+            isCoverHidden: true // 添加封面显示控制字段
         };
 
         // Check if content has front matter
@@ -271,26 +301,39 @@ function App() {
                 // Parse front matter lines
                 const lines = frontMatter.split('\n');
                 
+                // 用于跟踪是否在 cover 块中
+                let inCoverBlock = false;
+                
                 for (const line of lines) {
                     const trimmedLine = line.trim();
                     if (trimmedLine.startsWith('title:')) {
-                        result.title = trimmedLine.substring(6).trim().replace(/"/g, '');
+                        result.title = trimmedLine.substring(6).trim().replace(/^"(.*)"$/, '$1');
+                        // 反转义标题中的特殊字符
+                        result.title = result.title.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                     } else if (trimmedLine.startsWith('description:')) {
-                        result.description = trimmedLine.substring(12).trim().replace(/"/g, '');
+                        result.description = trimmedLine.substring(12).trim().replace(/^"(.*)"$/, '$1');
+                        // 反转义摘要中的特殊字符
+                        result.description = result.description.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                     } else if (trimmedLine.startsWith('author:')) {
                         const authorMatch = trimmedLine.match(/$$"([^"]+)"$$/);
                         if (authorMatch) {
                             result.author = authorMatch[1];
+                            // 反转义作者名中的特殊字符
+                            result.author = result.author.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                         }
                     } else if (trimmedLine.startsWith('tags:')) {
                         const tagsMatch = trimmedLine.match(/$$([^$$]+)$$/);
                         if (tagsMatch) {
                             result.tags = tagsMatch[1].replace(/"/g, '').replace(/,/g, ', ');
+                            // 反转义标签中的特殊字符
+                            result.tags = result.tags.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                         }
                     } else if (trimmedLine.startsWith('weight:')) {
                         result.weight = parseInt(trimmedLine.substring(7).trim()) || 1;
                     } else if (trimmedLine.startsWith('slug:')) {
-                        result.slug = trimmedLine.substring(5).trim().replace(/"/g, '');
+                        result.slug = trimmedLine.substring(5).trim().replace(/^"(.*)"$/, '$1');
+                        // 反转义slug中的特殊字符
+                        result.slug = result.slug.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                     } else if (trimmedLine.startsWith('keywords:')) {
                         // 处理关键词数组
                         const keywordLines = lines.slice(lines.indexOf(line) + 1);
@@ -298,12 +341,27 @@ function App() {
                         for (const keywordLine of keywordLines) {
                             const keywordTrimmed = keywordLine.trim();
                             if (keywordTrimmed.startsWith('-')) {
-                                keywordArray.push(keywordTrimmed.substring(1).trim().replace(/"/g, ''));
+                                let keyword = keywordTrimmed.substring(1).trim().replace(/^"(.*)"$/, '$1');
+                                // 反转义关键词中的特殊字符
+                                keyword = keyword.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                                keywordArray.push(keyword);
                             } else if (keywordTrimmed !== '') {
                                 break;
                             }
                         }
                         result.keywords = keywordArray.join(', ');
+                    } else if (trimmedLine.startsWith('cover:')) {
+                        // 进入 cover 块
+                        inCoverBlock = true;
+                    } else if (inCoverBlock && trimmedLine.startsWith('image:')) {
+                        // 提取封面图片路径
+                        result.coverImage = trimmedLine.substring(6).trim().replace(/^"(.*)"$/, '$1');
+                        // 反转义图片路径中的特殊字符
+                        result.coverImage = result.coverImage.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                    } else if (inCoverBlock && trimmedLine.startsWith('hiddenInList:')) {
+                        // 提取封面显示控制选项
+                        result.isCoverHidden = trimmedLine.substring(13).trim() === 'true';
+                        inCoverBlock = false; // 结束 cover 块
                     }
                 }
             }
@@ -350,7 +408,7 @@ function App() {
 
         try {
             // If there's a cover image, compress and save it
-            let coverImagePath = '';
+            let coverImagePathToUse = coverImagePath || ''; // 使用已存在的封面图片路径
             let imageSavePath = ''; // 用于保存图片的实际路径
             if (coverImage && imageDirectory) {
                 // Generate a unique filename for the image
@@ -373,7 +431,7 @@ function App() {
                 await SaveAndCompressImage(base64Data, coverImage.name, imageSavePath);
                 
                 // Convert image path to URL path for front matter - 使用固定的/images/uploads/路径格式
-                coverImagePath = `/images/uploads/${imageName}`;
+                coverImagePathToUse = `/images/uploads/${imageName}`;
             }
 
             // Parse tags from comma-separated string to array
@@ -384,7 +442,7 @@ function App() {
             const safeContent = content || '';
             const safeDescription = description || '';
             const safeAuthor = author || 'Aries';
-            const safeCoverImagePath = coverImagePath || '';
+            const safeCoverImagePath = coverImagePathToUse || '';
             const safeSaveDirectory = saveDirectory || '';
             const safeTagsArray = tagsArray || [];
             const safeWeight = parseInt(weight) || 1;
@@ -530,6 +588,8 @@ function App() {
         setWeight(1);
         setContent('');
         setCoverImage(null);
+        setCoverImagePath(''); // 清除封面图片路径
+        setCoverImageBase64(''); // 清除封面图片base64数据
         setIsCoverHidden(true); // 重置封面显示选项为隐藏
         setSlug(''); // 重置自定义URL
         setKeywords(''); // 重置关键词
@@ -923,6 +983,31 @@ function App() {
                                                 </div>
                                                 <div className="ml-3 text-sm text-gray-600 dark:text-gray-400">
                                                     {coverImage.name}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* 已存在的封面图片预览 */}
+                                        {!coverImage && coverImagePath && coverImageBase64 && (
+                                            <div className="mt-2 flex items-center">
+                                                <div className="relative">
+                                                    <img 
+                                                        src={`data:image/auto;base64,${coverImageBase64}`}
+                                                        alt="封面预览" 
+                                                        className="w-24 h-24 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            setCoverImagePath('');
+                                                            setCoverImageBase64('');
+                                                        }}
+                                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 focus:outline-none"
+                                                        title="移除图片"
+                                                    >
+                                                        <XMarkIcon className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="ml-3 text-sm text-gray-600 dark:text-gray-400">
+                                                    已存在的封面图片
                                                 </div>
                                             </div>
                                         )}

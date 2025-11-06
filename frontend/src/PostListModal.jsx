@@ -17,8 +17,9 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
         setLoadingPosts(true);
         try {
             // 调用后端方法获取文章列表，包含分页和搜索参数
-            const result = await ListPosts(saveDirectory, page, pageSize, search);
-            const [postList, totalCount] = result;
+            const result = await ListPosts(saveDirectory, rootDirectory || '', page, pageSize, search);
+            // 修复：正确解构 ListPostsResult 对象
+            const { posts: postList, totalCount } = result;
 
             setPosts(postList);
             setTotalPosts(totalCount);
@@ -28,7 +29,7 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
         } finally {
             setLoadingPosts(false);
         }
-    }, [saveDirectory, pageSize]);
+    }, [saveDirectory, rootDirectory, pageSize]);
 
     // 处理搜索
     const handleSearch = useCallback((term) => {
@@ -142,18 +143,18 @@ const PostListModal = ({ isOpen, onClose, saveDirectory, imageDirectory, rootDir
                                             >
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                                        {post}
+                                                        {post.title}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <button
-                                                        onClick={() => handleEditPost(post)}
+                                                        onClick={() => handleEditPost(post.title)}
                                                         className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 mr-3"
                                                     >
                                                         <PencilIcon className="h-4 w-4 inline" /> 编辑
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDeletePost(post)}
+                                                        onClick={() => handleDeletePost(post.title)}
                                                         className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                                                     >
                                                         <TrashIcon className="h-4 w-4 inline" /> 删除

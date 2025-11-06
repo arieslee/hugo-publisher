@@ -26,6 +26,10 @@ export function ListPostsSimple(arg1) {
   return window['go']['main']['App']['ListPostsSimple'](arg1);
 }
 
+export function LoadImageAsBase64(arg1, arg2) {
+  return window['go']['main']['App']['LoadImageAsBase64'](arg1, arg2);
+}
+
 export function LoadPost(arg1, arg2) {
   return window['go']['main']['App']['LoadPost'](arg1, arg2);
 }

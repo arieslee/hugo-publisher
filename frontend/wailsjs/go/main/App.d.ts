@@ -14,6 +14,8 @@ export function ListPosts(arg1:string,arg2:string,arg3:number,arg4:number,arg5:s
 
 export function ListPostsSimple(arg1:string):Promise<Array<string>>;
 
+export function LoadImageAsBase64(arg1:string,arg2:string):Promise<string>;
+
 export function LoadPost(arg1:string,arg2:string):Promise<string>;
 
 export function SaveAndCompressImage(arg1:string,arg2:string,arg3:string):Promise<void>;

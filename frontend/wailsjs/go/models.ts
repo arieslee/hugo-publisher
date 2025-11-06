@@ -7,6 +7,8 @@ export namespace main {
 	    slug: string;
 	    keywords: string[];
 	    hiddenInList: boolean;
+	    date: string;
+	    lastmod: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PostInfo(source);
@@ -20,6 +22,8 @@ export namespace main {
 	        this.slug = source["slug"];
 	        this.keywords = source["keywords"];
 	        this.hiddenInList = source["hiddenInList"];
+	        this.date = source["date"];
+	        this.lastmod = source["lastmod"];
 	    }
 	}
 	export class ListPostsResult {
